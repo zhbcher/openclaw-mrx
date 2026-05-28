@@ -9,6 +9,7 @@ storage/checkpoints/
 storage/events/
 storage/memory/
 storage/logs/
+storage/registry.db
 
 # OS noise
 .DS_Store

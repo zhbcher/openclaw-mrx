@@ -149,3 +149,37 @@ openclaw-mrx/
 - 执行日志的控制台输出
 - state.yaml 的状态变迁
 - events.jsonl 的事件时间线
+
+---
+
+## Phase 4a 完成 (2026-05-28 23:20)
+
+### ✅ Mission Registry（SQLite）
+- `core/state/mission-registry.ts` — SQLite 替代纯文件系统
+- CRUD + 过滤查询 + 状态追踪 + 进度更新
+- `getRunnable()` 按优先级排序
+- 自动创建存储目录
+
+### ✅ Mission Scheduler（并行调度）
+- `core/scheduler/mission-scheduler.ts` — 多 Mission 并发管理
+- 按优先级调度，可配置最大并发数
+- 每个 Mission 独立执行上下文
+- SIGINT 优雅关闭（暂停所有运行中 Mission）
+
+### ✅ REST API Server
+- `api/server.ts` — 9 个端点
+- GET /health, /api/stats
+- GET/POST /api/missions
+- GET /api/missions/:id
+- POST /api/missions/:id/start|pause|resume
+- GET /api/missions/:id/events (SSE)
+
+### 测试结果
+```
+✅ Health: {"status":"ok"}
+✅ Create: 201, 两个 Mission (priority 7 + 3)
+✅ List: 按 priority DESC 排序
+✅ Stats: total=2, active=0
+✅ Detail: 完整 MissionRecord 返回
+✅ Filter: ?status=created 正确过滤
+```

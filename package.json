@@ -10,10 +10,12 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/cli/mission.js",
-    "test": "node dist/test/smoke-test.js",
+    "api": "node dist/api/server.js",
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^12.10.0",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
@@ -23,6 +25,12 @@
   "engines": {
     "node": ">=18"
   },
-  "keywords": ["agent", "autonomous", "mission", "openclaw", "runtime"],
+  "keywords": [
+    "agent",
+    "autonomous",
+    "mission",
+    "openclaw",
+    "runtime"
+  ],
   "license": "MIT"
 }

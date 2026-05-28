@@ -31,6 +31,7 @@ MRX — OpenClaw Mission Runtime
   mrx status [mission-id]             查看 Mission 状态
   mrx resume [mission-id]             恢复 Mission
   mrx checkpoints [mission-id]        查看 Checkpoint 列表
+  mrx api [port]                        启动 REST API 服务器
   mrx help                            显示帮助
 `);
 }
@@ -219,6 +220,13 @@ async function main(): Promise<void> {
     default:
       usage();
       break;
+
+    case "api": {
+      const port = args[1];
+      if (port) process.env.MRX_API_PORT = port;
+      await import("../api/server.js");
+      break;
+    }
   }
 }
 
