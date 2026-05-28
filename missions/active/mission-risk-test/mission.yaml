@@ -1,0 +1,59 @@
+# 风险引擎测试
+version: 1
+
+mission:
+  id: mission-risk-test
+  name: "风险引擎测试"
+  description: "验证 Risk Engine 阻断危险操作"
+  priority: low
+
+objective:
+  - "测试危险命令阻断机制"
+
+context:
+  repo: "/Users/zhoubo/.openclaw/workspace/stockpulse"
+
+constraints: []
+
+environment:
+  working_dir: "/Users/zhoubo/.openclaw/workspace/stockpulse"
+
+validation:
+  commands:
+    - "echo 'safe command OK'"
+
+success_conditions:
+  type: all_of
+  conditions:
+    - "安全命令通过"
+
+budget:
+  max_tokens: 50000
+  max_duration_hours: 1
+  max_cost_usd: 1
+  max_iterations: 5
+  max_failures_per_task: 1
+  warning_threshold: 0.8
+
+checkpoint:
+  enabled: false
+  strategy: phase
+
+memory:
+  enabled: false
+  persist: false
+  compile_after: false
+
+risk_policy:
+  require_approval: []
+  block:
+    - "npm_publish"
+
+human_interaction:
+  mode: silent
+  notification: []
+
+autonomy:
+  retry_enabled: false
+  self_healing: false
+  auto_continue: false

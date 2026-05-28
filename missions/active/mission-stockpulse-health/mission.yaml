@@ -1,0 +1,67 @@
+# StockPulse DAG 测试 — MRX Phase 2
+version: 1
+
+mission:
+  id: mission-stockpulse-health
+  name: "StockPulse 健康检查（DAG 测试）"
+  description: "验证 DAG Planner 多任务拆解"
+  priority: medium
+
+objective:
+  - "测试 stockpulse 项目依赖和部署脚本完整性"
+  - "验证代码结构"
+
+context:
+  repo: "/Users/zhoubo/.openclaw/workspace/stockpulse"
+  branch: main
+
+constraints:
+  - "不修改任何源代码"
+  - "不执行部署操作"
+
+environment:
+  working_dir: "/Users/zhoubo/.openclaw/workspace/stockpulse"
+  shell: "/bin/zsh"
+
+validation:
+  commands:
+    - "node -e \"console.log('Node.js OK')\""
+    - "test -f package.json && echo 'package.json OK'"
+    - "test -f scripts/deploy-worker-api.ts && echo 'deploy script OK'"
+
+success_conditions:
+  type: all_of
+  conditions:
+    - "全部验证命令通过"
+
+budget:
+  max_tokens: 200000
+  max_duration_hours: 1
+  max_cost_usd: 1
+  max_iterations: 20
+  max_failures_per_task: 2
+  warning_threshold: 0.8
+
+checkpoint:
+  enabled: true
+  strategy: phase
+
+memory:
+  enabled: true
+  persist: true
+  compile_after: true
+
+risk_policy:
+  require_approval: []
+  block:
+    - outside_working_dir
+
+human_interaction:
+  mode: silent
+  notification:
+    - complete
+
+autonomy:
+  retry_enabled: true
+  self_healing: false
+  auto_continue: false

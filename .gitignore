@@ -1,0 +1,21 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Runtime artifacts
+missions/active/*/state.yaml
+missions/active/*/state.lock
+storage/checkpoints/
+storage/events/
+storage/memory/
+storage/logs/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
