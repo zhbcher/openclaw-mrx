@@ -1,10 +1,8 @@
 /**
- * State Manager — state.yaml 的读写与锁机制
- * 
- * MRX 的核心原则：state.yaml 是唯一真相源。
- * 所有模块只通过 StateManager 读写状态，不允许直接操作文件。
- * 
- * Phase 1：单 Agent 场景，锁机制为预留接口。
+ * @deprecated 请使用 core/state-graph/ 下的 SQLite stores（ObjectiveStore, GoalStore）。
+ *   本模块保留用于向后兼容，新代码请使用 getDatabase() + state-graph stores。
+ *
+ * 原注释：Phase 1 单 Agent 场景 state.yaml 读写，已被 SQLite WAL 替代。
  */
 
 import * as fs from "fs";

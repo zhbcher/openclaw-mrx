@@ -23,15 +23,15 @@ export interface Tool {
   readonly name: string;
   readonly description: string;
   readonly riskLevel: RiskLevel;
-  execute(params: Record<string, unknown>, workingDir: string): Promise<ToolResult>;
+  execute(params: Record<string, unknown>, workingDir: string): Promise<ToolExecResult>;
 }
 
-export interface ToolResult {
+export type ToolExecResult = {
   success: boolean;
   output: string;
   error?: string;
   durationMs: number;
-}
+};
 
 // ============================================================
 // 内置工具
@@ -42,7 +42,7 @@ export class GitStatusTool implements Tool {
   readonly description = "查看 Git 仓库状态";
   readonly riskLevel: RiskLevel = "safe";
 
-  async execute(_params: Record<string, unknown>, workingDir: string): Promise<ToolResult> {
+  async execute(_params: Record<string, unknown>, workingDir: string): Promise<ToolExecResult> {
     const started = Date.now();
     try {
       const output = execSync("git status --short", { cwd: workingDir, encoding: "utf-8", timeout: 30000 });
@@ -58,7 +58,7 @@ export class GitCommitTool implements Tool {
   readonly description = "提交 Git 变更";
   readonly riskLevel: RiskLevel = "medium";
 
-  async execute(params: Record<string, unknown>, workingDir: string): Promise<ToolResult> {
+  async execute(params: Record<string, unknown>, workingDir: string): Promise<ToolExecResult> {
     const started = Date.now();
     const message = params.message as string;
     if (!message || message.length < 3) {
@@ -80,7 +80,7 @@ export class NpmTestTool implements Tool {
   readonly description = "运行 npm test";
   readonly riskLevel: RiskLevel = "safe";
 
-  async execute(_params: Record<string, unknown>, workingDir: string): Promise<ToolResult> {
+  async execute(_params: Record<string, unknown>, workingDir: string): Promise<ToolExecResult> {
     const started = Date.now();
     try {
       const output = execSync("npm test 2>&1 | tail -20", { cwd: workingDir, encoding: "utf-8", timeout: 120000 });
@@ -96,7 +96,7 @@ export class NpmBuildTool implements Tool {
   readonly description = "运行 npm run build";
   readonly riskLevel: RiskLevel = "safe";
 
-  async execute(_params: Record<string, unknown>, workingDir: string): Promise<ToolResult> {
+  async execute(_params: Record<string, unknown>, workingDir: string): Promise<ToolExecResult> {
     const started = Date.now();
     try {
       const output = execSync("npm run build 2>&1 | tail -10", { cwd: workingDir, encoding: "utf-8", timeout: 120000 });
@@ -112,7 +112,7 @@ export class NpmInstallTool implements Tool {
   readonly description = "安装 npm 依赖";
   readonly riskLevel: RiskLevel = "low";
 
-  async execute(_params: Record<string, unknown>, workingDir: string): Promise<ToolResult> {
+  async execute(_params: Record<string, unknown>, workingDir: string): Promise<ToolExecResult> {
     const started = Date.now();
     try {
       const output = execSync("npm install 2>&1 | tail -5", { cwd: workingDir, encoding: "utf-8", timeout: 180000 });
@@ -128,7 +128,7 @@ export class LintTool implements Tool {
   readonly description = "运行代码检查";
   readonly riskLevel: RiskLevel = "safe";
 
-  async execute(_params: Record<string, unknown>, workingDir: string): Promise<ToolResult> {
+  async execute(_params: Record<string, unknown>, workingDir: string): Promise<ToolExecResult> {
     const started = Date.now();
     try {
       // 尝试 TypeScript 检查

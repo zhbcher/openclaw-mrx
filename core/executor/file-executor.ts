@@ -123,7 +123,7 @@ export class FileExecutor implements Executor {
       if (!realPath.startsWith(this.workspaceRoot)) {
         return { allowed: false, reason: "路径解析后超出工作区" };
       }
-    } catch {
+    } catch (err) {
       // 文件不存在时 realpathSync 会抛异常——这是允许的（创建新文件）
       // 但需检查目标路径仍在 workspace 内
       if (!resolved.startsWith(this.workspaceRoot)) {

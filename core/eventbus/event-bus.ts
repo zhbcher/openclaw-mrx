@@ -61,8 +61,8 @@ export class EventBus {
     for (const handler of allHandlers) {
       try {
         handler(event);
-      } catch {
-        // 静默吞掉
+      } catch (err) {
+        console.error("[event-bus] handler error:", String(err));
       }
     }
 

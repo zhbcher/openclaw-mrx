@@ -219,7 +219,8 @@ ${errorDetails}`;
         should_replan: json.should_replan ?? false,
         confidence: json.confidence || 0.5,
       };
-    } catch {
+    } catch (err) {
+      console.error("[reflector] LLM analysis failed:", String(err));
       return {
         root_cause: "LLM 分析异常",
         severity: "medium",
