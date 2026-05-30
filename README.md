@@ -228,7 +228,7 @@ npx tsx test/p0-new-test.ts            # P0:      8 tests  (scheduler + vector +
 
 ## Design Documents
 
-Architecture decisions and contracts are in the workspace `design/` directory:
+Architecture decisions and contracts are in the `docs/` directory:
 
 | Document | Description |
 |:---|:---|

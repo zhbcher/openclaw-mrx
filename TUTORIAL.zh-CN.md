@@ -277,7 +277,7 @@ curl http://localhost:3620/api/v1/reports/global \
   -H "Authorization: Bearer mrx-dev-key"
 ```
 
-完整 API 参考：20 个端点，覆盖 7 个资源组。详见 `design/contracts/openapi.yaml`。
+完整 API 参考：20 个端点，覆盖 7 个资源组。详见 `docs/contracts/openapi.yaml`。
 
 ## 5. 任务模板
 
@@ -441,7 +441,7 @@ const events = eventBus.queryEvents({
 
 ## 下一步
 
-1. 阅读[架构设计文档](design/mission-runtime-proposal.md)
-2. 查看[架构决策记录](design/adr/)
-3. 查阅 [OpenAPI 规范](design/contracts/openapi.yaml)
+1. 阅读[架构设计文档](docs/mission-runtime-proposal.md)
+2. 查看[架构决策记录](docs/adr/)
+3. 查阅 [OpenAPI 规范](docs/contracts/openapi.yaml)
 4. 阅读[贡献指南](CONTRIBUTING.md)

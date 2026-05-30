@@ -1,0 +1,680 @@
+openapi: "3.1.0"
+info:
+  title: MRX Runtime API
+  version: "1.0.0"
+  description: |
+    ARCHITECTURE FREEZE.
+    
+    MRX Runtime REST API — 所有外部系统（SPM / Goal Skill / QMD / Dashboard / CLI）
+    通过此 API 与 MRX 交互。
+    
+    设计原则：
+      - Objective/Goal/Task 分离为独立资源
+      - 状态变更通过事件流异步通知
+      - Checkpoint 为只读资源（不通过 API 创建，由 MRX 内部自动管理）
+
+servers:
+  - url: http://localhost:3620/api/v1
+    description: MRX Runtime 本地服务
+
+tags:
+  - name: Objectives
+    description: 顶层目标管理
+  - name: Goals
+    description: 子目标管理
+  - name: Tasks
+    description: 可执行任务管理
+  - name: Missions
+    description: 运行时 Mission 控制
+  - name: Checkpoints
+    description: 状态快照（只读）
+  - name: Events
+    description: 事件流订阅（SSE）
+  - name: Reports
+    description: 统计报告
+
+paths:
+  # ============================================================
+  # Objectives
+  # ============================================================
+  /objectives:
+    post:
+      tags: [Objectives]
+      summary: 创建 Objective
+      operationId: createObjective
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateObjectiveInput"
+      responses:
+        "201":
+          description: Objective 已创建
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Objective"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+    get:
+      tags: [Objectives]
+      summary: 列出 Objectives
+      operationId: listObjectives
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [created, planning, ready, running, paused, completed, failed, archived]
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [low, medium, high, critical]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Objective 列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ObjectiveSummary"
+
+  /objectives/{objective_id}:
+    get:
+      tags: [Objectives]
+      summary: 获取 Objective 详情
+      operationId: getObjective
+      parameters:
+        - $ref: "#/components/parameters/ObjectiveId"
+      responses:
+        "200":
+          description: Objective 详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Objective"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [Objectives]
+      summary: 归档 Objective
+      operationId: archiveObjective
+      parameters:
+        - $ref: "#/components/parameters/ObjectiveId"
+      responses:
+        "200":
+          description: 已归档
+
+  /objectives/{objective_id}/progress:
+    get:
+      tags: [Objectives]
+      summary: 获取 Objective 进度
+      operationId: getObjectiveProgress
+      parameters:
+        - $ref: "#/components/parameters/ObjectiveId"
+      responses:
+        "200":
+          description: 进度详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObjectiveProgress"
+
+  /objectives/{objective_id}/goals:
+    post:
+      tags: [Goals]
+      summary: 为 Objective 添加 Goal
+      operationId: createGoal
+      parameters:
+        - $ref: "#/components/parameters/ObjectiveId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGoalInput"
+      responses:
+        "201":
+          description: Goal 已创建
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goal"
+
+    get:
+      tags: [Goals]
+      summary: 列出 Objective 的所有 Goals
+      operationId: listGoals
+      parameters:
+        - $ref: "#/components/parameters/ObjectiveId"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, ready, running, blocked, completed, failed, skipped]
+      responses:
+        "200":
+          description: Goal 列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Goal"
+
+  # ============================================================
+  # Goals
+  # ============================================================
+  /goals/{goal_id}:
+    get:
+      tags: [Goals]
+      summary: 获取 Goal 详情
+      operationId: getGoal
+      parameters:
+        - $ref: "#/components/parameters/GoalId"
+      responses:
+        "200":
+          description: Goal 详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goal"
+
+    patch:
+      tags: [Goals]
+      summary: 更新 Goal 状态
+      operationId: updateGoalStatus
+      parameters:
+        - $ref: "#/components/parameters/GoalId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [ready, running, blocked, completed, failed, skipped]
+                error:
+                  type: string
+      responses:
+        "200":
+          description: 已更新
+
+  /goals/{goal_id}/progress:
+    get:
+      tags: [Goals]
+      summary: 获取 Goal 进度
+      operationId: getGoalProgress
+      parameters:
+        - $ref: "#/components/parameters/GoalId"
+      responses:
+        "200":
+          description: Goal 进度
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoalProgress"
+
+  /goals/{goal_id}/tasks:
+    post:
+      tags: [Tasks]
+      summary: 为 Goal 创建 Task
+      operationId: createTask
+      parameters:
+        - $ref: "#/components/parameters/GoalId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskInput"
+      responses:
+        "201":
+          description: Task 已创建
+
+    get:
+      tags: [Tasks]
+      summary: 列出 Goal 的所有 Tasks
+      operationId: listTasks
+      parameters:
+        - $ref: "#/components/parameters/GoalId"
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task 列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+
+  # ============================================================
+  # Tasks
+  # ============================================================
+  /tasks/{task_id}:
+    get:
+      tags: [Tasks]
+      summary: 获取 Task 详情
+      operationId: getTask
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Task 详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+    patch:
+      tags: [Tasks]
+      summary: 更新 Task 状态
+      operationId: updateTaskStatus
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [ready, running, done, failed, retrying, blocked]
+                error:
+                  type: string
+                result:
+                  type: string
+      responses:
+        "200":
+          description: 已更新
+
+  # ============================================================
+  # Missions
+  # ============================================================
+  /missions:
+    post:
+      tags: [Missions]
+      summary: 启动 Mission（执行 Objective）
+      operationId: startMission
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [objective_id]
+              properties:
+                objective_id:
+                  type: string
+                config_path:
+                  type: string
+                  description: mission.yaml 路径（可选，使用默认配置）
+      responses:
+        "201":
+          description: Mission 已启动
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mission"
+
+    get:
+      tags: [Missions]
+      summary: 列出 Missions
+      operationId: listMissions
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [created, planning, ready, running, paused, completed, failed, archived]
+      responses:
+        "200":
+          description: Mission 列表
+
+  /missions/{mission_id}:
+    get:
+      tags: [Missions]
+      summary: 获取 Mission 详情
+      operationId: getMission
+      parameters:
+        - $ref: "#/components/parameters/MissionId"
+      responses:
+        "200":
+          description: Mission 详情
+
+  /missions/{mission_id}/pause:
+    post:
+      tags: [Missions]
+      summary: 暂停 Mission
+      operationId: pauseMission
+      parameters:
+        - $ref: "#/components/parameters/MissionId"
+      responses:
+        "200":
+          description: 已暂停
+
+  /missions/{mission_id}/resume:
+    post:
+      tags: [Missions]
+      summary: 恢复 Mission
+      operationId: resumeMission
+      parameters:
+        - $ref: "#/components/parameters/MissionId"
+      responses:
+        "200":
+          description: 已恢复
+
+  # ============================================================
+  # Checkpoints（只读）
+  # ============================================================
+  /missions/{mission_id}/checkpoints:
+    get:
+      tags: [Checkpoints]
+      summary: 列出 Mission 的所有 Checkpoints
+      operationId: listCheckpoints
+      parameters:
+        - $ref: "#/components/parameters/MissionId"
+      responses:
+        "200":
+          description: Checkpoint 列表
+
+  /missions/{mission_id}/checkpoints/{checkpoint_id}:
+    get:
+      tags: [Checkpoints]
+      summary: 获取 Checkpoint 详情
+      operationId: getCheckpoint
+      parameters:
+        - $ref: "#/components/parameters/MissionId"
+        - $ref: "#/components/parameters/CheckpointId"
+      responses:
+        "200":
+          description: Checkpoint 详情
+
+  /missions/{mission_id}/rollback:
+    post:
+      tags: [Checkpoints]
+      summary: 回滚到指定 Checkpoint
+      operationId: rollback
+      parameters:
+        - $ref: "#/components/parameters/MissionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [checkpoint_id]
+              properties:
+                checkpoint_id:
+                  type: string
+      responses:
+        "200":
+          description: 回滚成功
+
+  # ============================================================
+  # Events（SSE）
+  # ============================================================
+  /events/{mission_id}:
+    get:
+      tags: [Events]
+      summary: 订阅 Mission 事件流（Server-Sent Events）
+      operationId: subscribeEvents
+      parameters:
+        - $ref: "#/components/parameters/MissionId"
+        - name: event_types
+          in: query
+          description: 过滤事件类型（逗号分隔）
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 事件流
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  # ============================================================
+  # Reports
+  # ============================================================
+  /reports/mission/{mission_id}:
+    get:
+      tags: [Reports]
+      summary: 获取 Mission 执行报告
+      operationId: getMissionReport
+      parameters:
+        - $ref: "#/components/parameters/MissionId"
+      responses:
+        "200":
+          description: 执行报告
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MissionReport"
+
+# ============================================================
+# Components
+# ============================================================
+components:
+  parameters:
+    ObjectiveId:
+      name: objective_id
+      in: path
+      required: true
+      schema:
+        type: string
+    GoalId:
+      name: goal_id
+      in: path
+      required: true
+      schema:
+        type: string
+    TaskId:
+      name: task_id
+      in: path
+      required: true
+      schema:
+        type: string
+    MissionId:
+      name: mission_id
+      in: path
+      required: true
+      schema:
+        type: string
+    CheckpointId:
+      name: checkpoint_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ValidationError:
+      description: 请求参数校验失败
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    # ---- Core Entities ----
+    Objective:
+      type: object
+      properties:
+        id: { type: string, example: "obj_20260530_001" }
+        title: { type: string }
+        description: { type: string }
+        status: { type: string, enum: [created, planning, ready, running, paused, completed, failed, archived] }
+        progress: { type: number, minimum: 0, maximum: 1 }
+        goal_ids: { type: array, items: { type: string } }
+        tags: { type: array, items: { type: string } }
+        priority: { type: string, enum: [low, medium, high, critical] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ObjectiveSummary:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        status: { type: string }
+        progress: { type: number }
+        goal_count: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    Goal:
+      type: object
+      properties:
+        id: { type: string, example: "goal_market_data" }
+        objective_id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        deliverable: { type: string }
+        status: { type: string, enum: [pending, ready, running, blocked, completed, failed, skipped] }
+        progress: { type: number }
+        task_ids: { type: array, items: { type: string } }
+        depends_on: { type: array, items: { type: string } }
+        estimated_complexity: { type: string, enum: [low, medium, high] }
+
+    Task:
+      type: object
+      properties:
+        id: { type: string }
+        goal_id: { type: string }
+        description: { type: string }
+        status: { type: string, enum: [pending, ready, running, done, failed, retrying, blocked] }
+        depends_on: { type: array, items: { type: string } }
+        children: { type: array, items: { type: string } }
+        retry_count: { type: integer }
+        max_retries: { type: integer }
+
+    Mission:
+      type: object
+      properties:
+        id: { type: string }
+        objective_id: { type: string }
+        status: { type: string }
+        current_phase: { type: string }
+        current_iteration: { type: integer }
+        budget_consumed:
+          type: object
+          properties:
+            tokens: { type: integer }
+            duration_minutes: { type: number }
+            cost_usd: { type: number }
+
+    # ---- Progress ----
+    ObjectiveProgress:
+      type: object
+      properties:
+        objective_id: { type: string }
+        objective_title: { type: string }
+        overall: { type: number }
+        goals:
+          type: array
+          items:
+            $ref: "#/components/schemas/GoalProgress"
+
+    GoalProgress:
+      type: object
+      properties:
+        goal_id: { type: string }
+        goal_title: { type: string }
+        status: { type: string }
+        progress: { type: number }
+        tasks_done: { type: integer }
+        tasks_total: { type: integer }
+        tasks_failed: { type: integer }
+        is_blocked: { type: boolean }
+
+    # ---- Reports ----
+    MissionReport:
+      type: object
+      properties:
+        mission_id: { type: string }
+        objective_title: { type: string }
+        status: { type: string }
+        total_iterations: { type: integer }
+        total_goals: { type: integer }
+        total_tasks: { type: integer }
+        tasks_completed: { type: integer }
+        tasks_failed: { type: integer }
+        recovery_count: { type: integer }
+        checkpoint_count: { type: integer }
+        duration_minutes: { type: number }
+        budget:
+          type: object
+          properties:
+            tokens_consumed: { type: integer }
+            cost_usd: { type: number }
+
+    # ---- Input ----
+    CreateObjectiveInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 200 }
+        description: { type: string, maxLength: 1000 }
+        priority: { type: string, enum: [low, medium, high, critical], default: medium }
+        tags: { type: array, items: { type: string } }
+        context:
+          type: object
+          properties:
+            repo: { type: string }
+            working_dir: { type: string }
+            constraints: { type: array, items: { type: string } }
+
+    CreateGoalInput:
+      type: object
+      required: [title, deliverable]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 80 }
+        description: { type: string, maxLength: 200 }
+        deliverable: { type: string, maxLength: 120 }
+        depends_on: { type: array, items: { type: string } }
+        estimated_complexity: { type: string, enum: [low, medium, high], default: medium }
+
+    CreateTaskInput:
+      type: object
+      required: [description]
+      properties:
+        description: { type: string, maxLength: 200 }
+        depends_on: { type: array, items: { type: string } }
+        max_retries: { type: integer, default: 3 }
+
+    # ---- Error ----
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details: { type: object }

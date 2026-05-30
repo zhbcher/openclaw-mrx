@@ -276,7 +276,7 @@ curl http://localhost:3620/api/v1/reports/global \
   -H "Authorization: Bearer mrx-dev-key"
 ```
 
-Full API reference: 20 endpoints across 7 resource groups (Objectives, Goals, Tasks, Missions, Checkpoints, Events, Reports). See `design/contracts/openapi.yaml`.
+Full API reference: 20 endpoints across 7 resource groups (Objectives, Goals, Tasks, Missions, Checkpoints, Events, Reports). See `docs/contracts/openapi.yaml`.
 
 ## 5. Mission Templates
 
@@ -442,7 +442,7 @@ const events = eventBus.queryEvents({
 
 ## Next Steps
 
-1. Read the [Architecture Design](design/mission-runtime-proposal.md)
-2. Review [Architecture Decisions](design/adr/)
-3. Explore the [OpenAPI Specification](design/contracts/openapi.yaml)
+1. Read the [Architecture Design](docs/mission-runtime-proposal.md)
+2. Review [Architecture Decisions](docs/adr/)
+3. Explore the [OpenAPI Specification](docs/contracts/openapi.yaml)
 4. Read the [Contributing Guide](CONTRIBUTING.md)
