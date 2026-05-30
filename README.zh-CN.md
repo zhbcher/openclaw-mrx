@@ -4,13 +4,15 @@
 >
 > 15 个阶段。65 个文件。~12,500 行代码。CI: ![CI](https://github.com/zhbcher/openclaw-mrx/actions/workflows/ci.yml/badge.svg) 45/45 项测试通过。
 >
-> 📖 [English Documentation](README.md)
+> 📖 [English Documentation](README.md) | 📚 [教程](TUTORIAL.zh-CN.md) | 📚 [English Tutorial](TUTORIAL.md)
 
 MRX 将 AI 智能体从"一次性提示响应器"转变为**持久化自主执行器**，能够跨小时甚至跨天进行任务规划、执行、验证、恢复、记忆和报告。
 
 ---
 
 ## 快速开始
+
+> 📚 **刚接触 MRX？** 读一遍[使用教程](TUTORIAL.zh-CN.md)即可上手。
 
 ```bash
 # 安装

@@ -4,13 +4,15 @@
 >
 > 15 phases. 65 files. ~12,500 lines. CI: ![CI](https://github.com/zhbcher/openclaw-mrx/actions/workflows/ci.yml/badge.svg) 45/45 tests.
 >
-> 📖 [中文文档](README.zh-CN.md)
+> 📖 [中文文档](README.zh-CN.md) | 📚 [教程](TUTORIAL.md) | 📚 [中文教程](TUTORIAL.zh-CN.md)
 
 MRX transforms an AI agent from "one-shot prompt responder" into a **persistent autonomous executor** that plans, executes, validates, recovers, remembers, and reports — across hours or days.
 
 ---
 
 ## Quick Start
+
+> 📚 **New to MRX?** Read the [Tutorial](TUTORIAL.md) for a step-by-step guide.
 
 ```bash
 # Install
