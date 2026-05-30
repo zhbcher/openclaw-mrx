@@ -176,7 +176,9 @@ export type JudgementVerdict =
   | "replan"
   | "rollback"
   | "escalate"
-  | "complete";
+  | "complete"
+  | "skip"
+  | "alternative";
 
 export interface JudgementRecord {
   iteration: number;

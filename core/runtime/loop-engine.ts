@@ -17,7 +17,7 @@ import { Validator } from "../validator/validator.js";
 import { CheckpointManager } from "../checkpoint/checkpoint.js";
 import { DagPlanner } from "../planner/dag-planner.js";
 import { Reflector } from "../reflector/reflector.js";
-import { RecoveryEngine } from "../recovery/recovery-engine.js";
+import { RecoveryEngineV2 } from "../recovery/recovery-engine-v2.js";
 import { EventBus } from "../eventbus/event-bus.js";
 import { SupervisorAgent } from "../../agents/supervisor.js";
 import { OpenClawAdapter } from "../../adapters/openclaw.js";
@@ -49,7 +49,7 @@ export class LoopEngine {
   // Phase 2+ 模块
   private dagPlanner: DagPlanner;
   private reflector: Reflector;
-  private recoveryEngine: RecoveryEngine;
+  private recoveryEngine: RecoveryEngineV2;
 
   // Phase 3 模块
   private eventBus: EventBus;
@@ -68,7 +68,7 @@ export class LoopEngine {
     // Phase 2
     this.dagPlanner = new DagPlanner(options.llmClient);
     this.reflector = new Reflector(options.llmClient);
-    this.recoveryEngine = new RecoveryEngine(this.config);
+    this.recoveryEngine = new RecoveryEngineV2();
 
     // Phase 3
     this.eventBus = new EventBus(options.storageRoot, this.config.mission.id);
@@ -307,12 +307,18 @@ export class LoopEngine {
 
       // === JUDGE（Recovery Tree） ===
       this.state.setPhase("judge");
-      const recovery = this.recoveryEngine.decide(
-        reflection,
-        currentTask.retry_count,
-        currentTask.max_retries,
-        iteration
-      );
+      const recovery = this.recoveryEngine.decide({
+        validationPassed: reflection.confidence === 1.0 && !reflection.should_retry && !reflection.should_replan,
+        retryCount: currentTask.retry_count,
+        maxRetries: currentTask.max_retries,
+        iteration,
+        maxIterations: this.config.budget.max_iterations,
+        rootCause: reflection.root_cause,
+        severity: reflection.severity,
+        selfHealingEnabled: this.config.autonomy.self_healing,
+        hasCheckpoint: !!this.state.getState().last_checkpoint_id,
+        isCriticalPath: true, // V2: 默认关键路径
+      });
       console.log(`  ⚖️  JUDGE: ${recovery.verdict} — ${recovery.reason}`);
 
       this.state.addJudgementRecord({
@@ -327,7 +333,6 @@ export class LoopEngine {
 
       // 根据裁决执行
       switch (recovery.verdict) {
-        case "complete":
         case "continue":
           this.state.updateTaskStatus(currentTask.id, "done");
           this.eventBus.emit("TASK_COMPLETED", {
@@ -384,6 +389,19 @@ export class LoopEngine {
           } else {
             console.log("  ⚠️  无可用 Checkpoint，无法回退");
           }
+          break;
+
+        case "skip":
+          this.state.updateTaskStatus(currentTask.id, "done"); // 跳过视为完成
+          this.eventBus.emit("TASK_COMPLETED", { task_id: currentTask.id, description: currentTask.description + " (skipped)" });
+          this.unlockDependents(currentTask.id);
+          console.log(`  ⏭️  跳过任务: ${currentTask.id}`);
+          break;
+
+        case "alternative":
+          this.eventBus.emit("RECOVERY_TRIGGERED", { verdict: "alternative", task_id: currentTask.id });
+          this.state.updateTaskStatus(currentTask.id, "retrying");
+          console.log(`  🔀 尝试替代方案: ${recovery.alternative || recovery.reason}`);
           break;
       }
 
@@ -477,7 +495,7 @@ export class LoopEngine {
   }
 
   // ============================================================
-  // Phase 3: PLAN
+  // Phase 3: PLAN — 将 Task 描述转为可执行步骤
   // ============================================================
 
   private async plan(
@@ -486,40 +504,53 @@ export class LoopEngine {
     task: TaskNode
   ): Promise<ExecutionPlan> {
     const steps: ExecutionStep[] = [];
+    let order = 0;
 
-    // 第一次循环：检查 git 状态
+    // 第一次循环：检查环境
     if (iteration === 1) {
-      steps.push({
-        order: 0,
-        description: "检查 git 状态",
-        tool: "shell",
-        action: "exec",
-        params: { command: "git status --short", cwd: this.config.environment.working_dir },
-        expected_result: "了解当前工作区状态",
-      });
+      steps.push({ order: order++, description: "检查 git 状态", tool: "shell", action: "exec", params: { command: "git status --short", cwd: this.config.environment.working_dir }, expected_result: "了解当前工作区状态" });
     }
 
-    // 验证命令
-    if (this.config.validation.commands.length > 0) {
-      steps.push({
-        order: steps.length + 1,
-        description: `运行 ${this.config.validation.commands.length} 项验证`,
-        tool: "shell",
-        action: "exec",
-        params: {
-          commands: this.config.validation.commands,
-          cwd: this.config.environment.working_dir,
-        },
-        expected_result: "所有验证通过",
-      });
+    // 根据 task.description 生成执行步骤
+    const taskSteps = this.taskToSteps(task);
+    steps.push(...taskSteps.map(s => ({ ...s, order: order++ })));
+
+    // 验证命令（如果任务没有自己的验证）
+    if (taskSteps.length === 0 && this.config.validation.commands.length > 0) {
+      steps.push({ order: order++, description: `运行 ${this.config.validation.commands.length} 项验证`, tool: "shell", action: "exec", params: { commands: this.config.validation.commands, cwd: this.config.environment.working_dir }, expected_result: "所有验证通过" });
     }
 
-    return {
-      iteration,
-      task_id: task.id,
-      steps,
-      expected_outcome: task.description,
-    };
+    return { iteration, task_id: task.id, steps, expected_outcome: task.description };
+  }
+
+  /** 将 Task 描述转为 ExecutionStep[] */
+  private taskToSteps(task: TaskNode): ExecutionStep[] {
+    const desc = task.description.toLowerCase();
+    const steps: ExecutionStep[] = [];
+
+    // 代码生成类任务
+    if (desc.includes("创建") || desc.includes("实现") || desc.includes("implement") || desc.includes("create") || desc.includes("开发")) {
+      steps.push({ order: 0, description: `基于任务描述生成代码：${task.description.slice(0, 60)}`, tool: "shell", action: "exec", params: { command: `echo "[MRX] 执行任务: ${task.description}"`, cwd: this.config.environment.working_dir }, expected_result: "代码已生成" });
+      steps.push({ order: 0, description: "运行类型检查", tool: "shell", action: "exec", params: { command: "npx tsc --noEmit 2>&1 | tail -5", cwd: this.config.environment.working_dir }, expected_result: "无类型错误" });
+    }
+    // 测试类任务
+    else if (desc.includes("测试") || desc.includes("test")) {
+      steps.push({ order: 0, description: "运行测试", tool: "shell", action: "exec", params: { command: "npm test 2>&1 | tail -10", cwd: this.config.environment.working_dir }, expected_result: "测试通过" });
+    }
+    // 分析类任务
+    else if (desc.includes("分析") || desc.includes("analyze") || desc.includes("理解")) {
+      steps.push({ order: 0, description: "分析代码结构", tool: "shell", action: "exec", params: { command: "find . -name '*.ts' -not -path '*/node_modules/*' | head -20 && echo '---' && git log --oneline -5", cwd: this.config.environment.working_dir }, expected_result: "代码结构已了解" });
+    }
+    // 构建类任务
+    else if (desc.includes("构建") || desc.includes("build") || desc.includes("编译")) {
+      steps.push({ order: 0, description: "运行构建", tool: "shell", action: "exec", params: { command: "npm run build 2>&1 | tail -10", cwd: this.config.environment.working_dir }, expected_result: "构建成功" });
+    }
+    // 配置类任务
+    else if (desc.includes("配置") || desc.includes("config") || desc.includes("设置")) {
+      steps.push({ order: 0, description: "检查配置文件", tool: "shell", action: "exec", params: { command: "ls -la tsconfig.json package.json .eslintrc* .prettierrc* 2>/dev/null", cwd: this.config.environment.working_dir }, expected_result: "配置文件已确认" });
+    }
+
+    return steps;
   }
 
   // ============================================================

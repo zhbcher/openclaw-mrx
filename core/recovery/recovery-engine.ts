@@ -1,19 +1,6 @@
 /**
- * Recovery Engine — 多路径故障恢复
- * 
- * 恢复决策树：
- * 
- *   执行失败
- *     ├── RETRY       重试当前步骤（临时性错误）
- *     ├── REPLAN      重新生成执行计划（方案问题）
- *     ├── ROLLBACK    回退到上一 checkpoint
- *     ├── ALTERNATIVE 换一种实现方式
- *     ├── SKIP        跳过当前任务（降级）
- *     ├── ASK_HUMAN   暂停，请求人工介入
- *     └── ABORT       放弃 Mission
- * 
- * Phase 2 实现 RETRY/REPLAN/ASK_HUMAN/ABORT
- * Phase 3+ 实现 ROLLBACK/ALTERNATIVE/SKIP
+ * @deprecated 请使用 RecoveryEngineV2（core/recovery/recovery-engine-v2.ts）
+ *   V2 支持 6 分支决策树（critical 优先），Loop Engine 已接入 V2。
  */
 
 import type { JudgementVerdict } from "../types.js";

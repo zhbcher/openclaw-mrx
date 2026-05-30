@@ -27,11 +27,13 @@ export interface SemanticValidationResult {
 const EMBEDDING_DUPLICATE_THRESHOLD = 0.85; // cosine > 0.85 = 重复
 const JACCARD_DUPLICATE_THRESHOLD = 0.65;    // 回退阈值
 
+import { CONFIG } from "../config.js";
+
 export class SemanticGoalValidator {
   private apiBaseUrl: string;
 
   constructor(apiBaseUrl?: string) {
-    this.apiBaseUrl = apiBaseUrl || "http://localhost:18789";
+    this.apiBaseUrl = apiBaseUrl || CONFIG.apiBaseUrl;
   }
 
   /**

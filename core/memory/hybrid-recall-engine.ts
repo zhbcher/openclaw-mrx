@@ -17,7 +17,9 @@ import * as path from "path";
 import { KeywordExtractor } from "./keyword-extractor.js";
 import { ContextBuilder, type RecallResult, type BuiltContext } from "./context-builder.js";
 import { QmdLiteClient } from "./qmd-lite-client.js";
+import { parseMemoryMarkdown } from "./memory-parser.js";
 import type { MemoryEntry } from "./memory-compiler.js";
+import { CONFIG } from "../config.js";
 
 export interface HybridRecallOptions {
   maxResults?: number;
@@ -49,7 +51,7 @@ export class HybridRecallEngine {
     this.keywordExtractor = new KeywordExtractor();
     this.contextBuilder = new ContextBuilder();
     this.memoryDir = memoryDir;
-    this.apiBaseUrl = apiBaseUrl || "http://localhost:18789";
+    this.apiBaseUrl = apiBaseUrl || CONFIG.apiBaseUrl;
     
     const qmdPath = qmdIndexPath || path.join(process.cwd(), "memory", "mrx");
     this.qmdClient = fs.existsSync(qmdPath) ? new QmdLiteClient(qmdPath) : null;
