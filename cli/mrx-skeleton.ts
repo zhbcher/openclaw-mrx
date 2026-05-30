@@ -269,11 +269,11 @@ async function handleRecall(input: string) {
     return;
   }
 
-  const { RecallEngine } = await import("../core/memory/recall-engine.js");
+  const { HybridRecallEngine } = await import("../core/memory/hybrid-recall-engine.js");
   const memDir = new URL("../data/memory", import.meta.url).pathname;
-  const engine = new RecallEngine(memDir);
+  const engine = new HybridRecallEngine(memDir);
 
-  const { built, raw } = await engine.recall(input, "Memory Recall 测试");
+  const { built, raw } = await engine.recall(input, "Memory Recall 测试", { useEmbedding: false });
 
   console.log(`\n🔍 搜索: "${input}"`);
   console.log(`   关键词: [${raw.keywords.join(", ")}]`);
@@ -426,10 +426,10 @@ async function handleTests() {
   // Test 5: Memory Recall — JWT 任务召回
   console.log("\n📋 Test 5: Memory Recall — JWT 任务召回");
   try {
-    const { RecallEngine } = await import("../core/memory/recall-engine.js");
+    const { HybridRecallEngine: HRE2 } = await import("../core/memory/hybrid-recall-engine.js");
     const memDir = new URL("../data/memory", import.meta.url).pathname;
-    const engine = new RecallEngine(memDir);
-    const { built } = await engine.recall("实现JWT用户登录接口", "用户认证系统");
+    const engine = new HRE2(memDir);
+    const { built } = await engine.recall("实现JWT用户登录接口", "用户认证系统", { useEmbedding: false });
     if (built.hits.failures > 0) {
       console.log(`   ✅ PASS: 召回失败教训: ${built.hits.failures} | 方案: ${built.hits.solutions} | 决策: ${built.hits.decisions}`);
       passed++;

@@ -16,6 +16,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { MissionState, MissionConfig, VerificationRecord, JudgementRecord } from "../types.js";
 import type { LlmClient } from "../planner/dag-planner.js";
+import { getDatabase } from "../state-graph/database.js";
 
 // ============================================================
 // 记忆条目类型
@@ -30,6 +31,14 @@ export interface MemoryEntry {
   content: string;
   tags: string[];
   confidence: number;
+  // Frozen Schema v1 新增（可选，向后兼容）
+  created_at?: string;
+  related_objective_id?: string;
+  related_goal_id?: string;
+  related_task_id?: string;
+  access_count?: number;
+  last_recalled_at?: string;
+  decay_factor?: number;
 }
 
 export interface CompiledMemory {
@@ -235,6 +244,17 @@ export class MemoryCompiler {
     // 写入汇总索引
     const index = this.buildIndex(memory, missionId);
     fs.writeFileSync(path.join(dir, "INDEX.md"), index, "utf-8");
+
+    // V2: 同步写入 SQLite memory_entries 表
+    try {
+      const db = getDatabase();
+      const insert = db.prepare("INSERT OR REPLACE INTO memory_entries (id, mission_id, type, title, content, tags, confidence, access_count, decay_factor, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1.0, ?)");
+      db.transaction(() => {
+        for (const [_type, entries] of Object.entries(memory)) {
+          for (const e of entries) { insert.run(e.id, missionId, e.type, e.title, e.content, JSON.stringify(e.tags), e.confidence, e.timestamp); }
+        }
+      })();
+    } catch (err) { console.error("[memory-compiler] SQLite persist failed:", String(err)); }
   }
 
   private formatAsMarkdown(type: string, entries: MemoryEntry[]): string {
