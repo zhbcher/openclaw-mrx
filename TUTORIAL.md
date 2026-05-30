@@ -85,13 +85,13 @@ autonomy:
 npx tsx cli/mrx-skeleton.ts run "Build a stock trading system with backtesting engine"
 
 # Expected output:
-# 🎯 创建 Objective: Build a stock trading system...
-# 🧠 LLM 拆解 Goal...
-#    生成了 4 个 Goal
-# 🔍 Goal Validator 校验...
-#    ✅ Goal 校验通过
-# 💾 持久化到 State Graph (SQLite)...
-#    ✅ 4 个 Goal 已写入数据库
+# 🎯 Creating Objective: Build a stock trading system...
+# 🧠 LLM decomposing Goals...
+#    Generated 4 Goals
+# 🔍 Goal Validator checking...
+#    ✅ Validation passed
+# 💾 Persisting to State Graph (SQLite)...
+#    ✅ 4 Goals written to database
 ```
 
 ### 2.3 View Mission Status
@@ -110,7 +110,7 @@ npx tsx cli/mrx-skeleton.ts status <objective_id>
 #    Progress: 0%
 #    Goals: 4
 #
-#    Goal 树:
+#    Goal Tree:
 #      🟢 goal_market_data: Market Data Module (ready)
 #      ⏳ goal_backtest: Backtesting Engine (pending) ← [goal_market_data]
 #      ⏳ goal_trading: Trading Execution (pending) ← [goal_market_data, goal_backtest]
@@ -227,8 +227,8 @@ MRX remembers past missions. Before executing a task, it searches its memory:
 npx tsx cli/mrx-skeleton.ts recall "JWT authentication"
 
 # Expected output:
-# 🧠 [本地+QMD] 找到 9 条相关记忆 (失败:1 方案:1 决策:1 模式:0 知识:0)
-#   🔝 Top: [solution] JWT refresh token 轮转方案 (83%)
+# 🧠 [Local+QMD] Found 9 related memories (Failures:1 Solutions:1 Decisions:1 Patterns:0 Knowledge:0)
+#   🔝 Top: [solution] JWT refresh token rotation (83%)
 ```
 
 The Hybrid Recall Engine combines:
@@ -395,7 +395,7 @@ const results = store.search(queryEmbedding, "memory", 5);
 
 ### Common Issues
 
-**"OpenClaw API 不可用"**
+**"OpenClaw API unavailable"**
 → This appears when the LLM API isn't reachable. MRX falls back to mock planner output for testing. Connect to OpenClaw Gateway to use real LLM.
 
 **"UNIQUE constraint failed"**
