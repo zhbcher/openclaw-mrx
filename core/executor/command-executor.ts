@@ -15,14 +15,17 @@ import type { Executor, ExecutorAction, TaskInput, TaskResult } from "./executor
 // Allowlist
 // ============================================================
 
-const ALLOWED_COMMANDS = [
+const ALLOWED_COMMANDS = new Set([
   "npm", "npx", "node", "tsc", "tsx",
   "python", "python3", "pytest",
   "git", "echo", "cat", "ls", "grep", "find", "wc",
   "mkdir", "touch", "cp", "mv",
+]);
+
+const ALLOWED_PHRASES = new Set([
   "npm test", "npm run build", "npm run lint",
   "npx tsc --noEmit", "npx jest",
-];
+]);
 
 const BLOCKED_COMMANDS = [
   "rm -rf", "rm -r", "sudo", "shutdown", "reboot", "halt",
@@ -119,14 +122,14 @@ export class CommandExecutor implements Executor {
       }
     }
 
-    // 再检查 allowed
-    for (const allowed of ALLOWED_COMMANDS) {
-      if (trimmed.startsWith(allowed) || trimmed === allowed) {
-        return { allowed: true };
-      }
-    }
+    // 2. 基础命令白名单 (O(1) 查找)
+    const baseCmd = trimmed.split(" ")[0];
+    if (ALLOWED_COMMANDS.has(baseCmd)) return { allowed: true };
 
-    return { allowed: false, reason: `命令不在白名单中: "${trimmed.split(" ")[0]}"` };
+    // 3. 完整短语白名单
+    if (ALLOWED_PHRASES.has(trimmed)) return { allowed: true };
+
+    return { allowed: false, reason: `命令不在白名单中: "${baseCmd}"` };
   }
 
   private checkBoundary(workingDir: string): { allowed: boolean; reason?: string } {

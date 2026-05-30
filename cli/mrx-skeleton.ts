@@ -15,6 +15,7 @@ import { ObjectiveEngine } from "../core/objective/objective-engine.js";
 import { GoalValidator } from "../core/planner/goal-validator.js";
 import { getDatabase, migrate, closeDatabase } from "../core/state-graph/database.js";
 import { TransactionManager, LeaseLock } from "../core/state-graph/transaction-manager.js";
+import { cleanupTestData } from "../core/state-graph/cleanup.js";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
@@ -319,6 +320,9 @@ async function handleList() {
 // ============================================================
 
 async function handleTests() {
+  // 测试前清理旧数据
+  cleanupTestData();
+
   console.log("═".repeat(60));
   console.log("  Architecture Freeze 验收测试");
   console.log("═".repeat(60));

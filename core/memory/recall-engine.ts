@@ -38,6 +38,9 @@ export class RecallEngine {
   private contextBuilder: ContextBuilder;
   private memoryDir: string;
   private qmdClient: QmdLiteClient | null;
+  private cache: MemoryEntry[] | null = null;
+  private lastCacheTime = 0;
+  private readonly CACHE_TTL = 30_000;
 
   constructor(memoryDir: string, qmdIndexPath?: string) {
     this.keywordExtractor = new KeywordExtractor();
@@ -71,7 +74,7 @@ export class RecallEngine {
     }
 
     // 2. 搜索记忆库（本地文件 + QMD 索引）
-    const localEntries = this.loadAllMemories();
+    const localEntries = this.getCachedMemories();
     
     // QMD 双源检索
     let qmdEntries: MemoryEntry[] = [];
@@ -132,6 +135,14 @@ export class RecallEngine {
    * Walking Skeleton 阶段：直接读取文件系统
    * 下一阶段：通过 QMD Lite 客户端
    */
+  private getCachedMemories(): MemoryEntry[] {
+    const now = Date.now();
+    if (this.cache && (now - this.lastCacheTime < this.CACHE_TTL)) return this.cache;
+    this.cache = this.loadAllMemories();
+    this.lastCacheTime = now;
+    return this.cache;
+  }
+
   private loadAllMemories(): MemoryEntry[] {
     const entries: MemoryEntry[] = [];
 

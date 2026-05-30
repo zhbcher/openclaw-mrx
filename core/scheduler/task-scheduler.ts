@@ -233,16 +233,9 @@ class PromisePool {
   }
 
   /** 等待所有任务完成 */
-  drain(): Promise<void> {
-    return new Promise(resolve => {
-      const check = () => {
-        if (this.running === 0 && this.queue.length === 0) {
-          resolve();
-        } else {
-          setTimeout(check, 50);
-        }
-      };
-      check();
-    });
+  async drain(): Promise<void> {
+    while (this.running > 0 || this.queue.length > 0) {
+      await this.waitOne();
+    }
   }
 }

@@ -17,6 +17,8 @@ export class StateManager {
   private statePath: string;
   private state: MissionState | null = null;
   private lockFile: string;
+  private saveTimer: NodeJS.Timeout | null = null;
+  private readonly SAVE_DELAY = 100;
 
   constructor(missionDir: string) {
     this.statePath = path.join(missionDir, "state.yaml");
@@ -74,21 +76,25 @@ export class StateManager {
   /**
    * 将当前内存状态写入 state.yaml
    */
-  save(): void {
-    if (!this.state) {
-      throw new Error("No state to save. Call createInitialState() or load() first.");
-    }
-    // 确保目录存在
+  save(immediate: boolean = false): void {
+    if (!this.state) throw new Error("No state to save");
+
+    if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer = null; }
+    if (immediate) { this.doSave(); }
+    else { this.saveTimer = setTimeout(() => this.doSave(), this.SAVE_DELAY); }
+  }
+
+  private doSave(): void {
+    if (!this.state) return;
     const dir = path.dirname(this.statePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     this.state.updated_at = new Date().toISOString();
-    const yamlStr = yaml.stringify(this.state, {
-      indent: 2,
-      lineWidth: 0,
-    });
-    fs.writeFileSync(this.statePath, yamlStr, "utf-8");
+    const yamlStr = yaml.stringify(this.state, { indent: 2, lineWidth: 0 });
+    try {
+      fs.writeFileSync(this.statePath, yamlStr, "utf-8");
+    } catch (err) {
+      console.error("[StateManager] Failed to save state:", err);
+    }
   }
 
   // ============================================================
