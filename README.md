@@ -2,7 +2,7 @@
 
 > **Autonomous Agent Runtime.** Not a skill. Not a script. A long-running mission execution engine.
 >
-> 15 phases. 39 files. ~10,800 lines of code. 15/15 acceptance tests passing.
+> 15 phases. 42 files. ~11,000 lines of code. CI: ![CI](https://github.com/zhbcher/openclaw-mrx/actions/workflows/ci.yml/badge.svg) 15/15 tests.
 
 MRX transforms an AI agent from "one-shot prompt responder" into a **persistent autonomous executor** that plans, executes, validates, recovers, remembers, and reports — across hours or days.
 
@@ -194,6 +194,15 @@ npx tsx cli/mrx-skeleton.ts test
 | **预算保护** | Budget Guard (4-dim: iterations/runtime/failures/tokens, 80% warn, 100% block) |
 | **API 校验** | Zod schemas (prevents NaN→SQL, type-safe inputs) |
 | **DB 索引** | 7 new indexes (goals/tasks/missions/memory — eliminates full table scans) |
+
+## 工程化
+
+| 能力 | 实现 |
+|:---|:---|
+| **结构化日志** | createLogger + Trace ID 全链路追踪 + 4 级日志 |
+| **API 认证** | Bearer Token + 3 级权限 (read/write/admin) + 速率限制 |
+| **CI/CD** | GitHub Actions: 3 Node 版本 × (tsc + 4 test suites + build) |
+| **贡献指南** | CONTRIBUTING.md: 项目结构、代码规范、Mission 模板 |
 
 ## Design Documents
 
