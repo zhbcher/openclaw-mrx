@@ -1,234 +1,145 @@
-#!/usr/bin/env node
 /**
- * MRX REST API Server
- *
- * Phase 4a: HTTP API for mission management.
- * Endpoints:
- *   GET    /health                    — health check
- *   GET    /api/missions              — list all missions
- *   GET    /api/missions/:id          — mission detail
- *   POST   /api/missions              — create mission
- *   POST   /api/missions/:id/start    — start mission
- *   POST   /api/missions/:id/pause    — pause mission
- *   POST   /api/missions/:id/resume   — resume mission
- *   GET    /api/missions/:id/events   — SSE event stream
- *   GET    /api/missions/:id/checkpoints — list checkpoints
- *   GET    /api/stats                 — global stats
+ * MRX Runtime API Server — 基于 Node.js 内置 http 模块
+ * 
+ * 无外部依赖（不引入 Express/Koa），保持最小化。
+ * 实现 OpenAPI Contract 定义的全部端点。
  */
 
 import * as http from "http";
-import * as path from "path";
 import * as fs from "fs";
+import * as path from "path";
 
-// 延迟导入，避免循环依赖
-let scheduler: InstanceType<typeof import("../core/scheduler/mission-scheduler.js").MissionScheduler> | null = null;
+export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
-const PORT = parseInt(process.env.MRX_API_PORT || "3099", 10);
-
-async function getScheduler() {
-  if (!scheduler) {
-    const { MissionScheduler } = await import("../core/scheduler/mission-scheduler.js");
-    const mrxRoot = path.resolve(import.meta.dirname, "../..");
-    const storageRoot = path.resolve(process.env.MRX_STORAGE_ROOT || path.join(mrxRoot, "storage"));
-    const missionDir = path.resolve(process.env.MRX_MISSIONS_DIR || path.join(mrxRoot, "missions/active"));
-    scheduler = new MissionScheduler({ storageRoot, missionActiveDir: missionDir });
-  }
-  return scheduler;
+export interface Route {
+  method: HttpMethod;
+  path: RegExp;            // 匹配路径（支持路径参数）
+  handler: (req: http.IncomingMessage, params: Record<string, string>, body: any) => Promise<RouteResponse>;
+  authRequired?: boolean;
 }
 
-// ============================================================
-// JSON 响应工具
-// ============================================================
-
-function json(res: http.ServerResponse, data: unknown, status = 200): void {
-  res.writeHead(status, {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  });
-  res.end(JSON.stringify(data, null, 2));
+export interface RouteResponse {
+  status: number;
+  body: any;
+  headers?: Record<string, string>;
 }
 
-function error(res: http.ServerResponse, message: string, status = 400): void {
-  json(res, { error: message }, status);
-}
+export class ApiServer {
+  private routes: Route[] = [];
+  private server: http.Server | null = null;
+  private apiKey: string | null = null;
 
-async function parseBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", chunk => { body += chunk; });
-    req.on("end", () => {
-      try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch {
-        reject(new Error("Invalid JSON"));
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-// ============================================================
-// 路由
-// ============================================================
-
-async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  const url = new URL(req.url || "/", `http://localhost:${PORT}`);
-  const method = req.method || "GET";
-
-  // CORS preflight
-  if (method === "OPTIONS") {
-    res.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    });
-    res.end();
-    return;
+  constructor(options?: { apiKey?: string }) {
+    this.apiKey = options?.apiKey || null;
   }
 
-  try {
-    const sched = await getScheduler();
+  /** 注册路由 */
+  addRoute(route: Route): this {
+    this.routes.push(route);
+    return this;
+  }
 
-    // Health
-    if (url.pathname === "/health" && method === "GET") {
-      return json(res, { status: "ok", uptime: process.uptime() });
-    }
+  /** 批量注册 */
+  addRoutes(routes: Route[]): this {
+    this.routes.push(...routes);
+    return this;
+  }
 
-    // Stats
-    if (url.pathname === "/api/stats" && method === "GET") {
-      return json(res, sched.getStatus());
-    }
-
-    // List missions
-    if (url.pathname === "/api/missions" && method === "GET") {
-      const filter: Record<string, unknown> = {};
-      const statusParam = url.searchParams.get("status");
-      if (statusParam) filter.status = statusParam;
-      const missions = sched.registry.list(filter as any);
-      return json(res, missions);
-    }
-
-    // Create mission
-    if (url.pathname === "/api/missions" && method === "POST") {
-      const body = await parseBody(req);
-      const { id, name, config_path, priority } = body;
-
-      if (!id || !name || !config_path) {
-        return error(res, "Missing required fields: id, name, config_path");
-      }
-
-      const statePath = path.join(
-        process.env.MRX_MISSIONS_DIR || path.join(path.resolve(import.meta.dirname, "../.."), "missions/active"),
-        id as string
-      );
-      if (!fs.existsSync(statePath)) {
-        fs.mkdirSync(statePath, { recursive: true });
-      }
-
-      const record = sched.register(
-        id as string,
-        name as string,
-        config_path as string,
-        statePath,
-        (priority as number) || 5
-      );
-
-      return json(res, record, 201);
-    }
-
-    // Mission detail
-    const missionMatch = url.pathname.match(/^\/api\/missions\/([^/]+)$/);
-    if (missionMatch && method === "GET") {
-      const mission = sched.registry.get(missionMatch[1]);
-      if (!mission) return error(res, "Mission not found", 404);
-      return json(res, mission);
-    }
-
-    // Start mission
-    const startMatch = url.pathname.match(/^\/api\/missions\/([^/]+)\/start$/);
-    if (startMatch && method === "POST") {
-      try {
-        await sched.startMission(startMatch[1]);
-        return json(res, { status: "started", mission_id: startMatch[1] });
-      } catch (err) {
-        return error(res, (err as Error).message, 409);
-      }
-    }
-
-    // Pause mission
-    const pauseMatch = url.pathname.match(/^\/api\/missions\/([^/]+)\/pause$/);
-    if (pauseMatch && method === "POST") {
-      await sched.pauseMission(pauseMatch[1]);
-      return json(res, { status: "paused", mission_id: pauseMatch[1] });
-    }
-
-    // Resume mission
-    const resumeMatch = url.pathname.match(/^\/api\/missions\/([^/]+)\/resume$/);
-    if (resumeMatch && method === "POST") {
-      try {
-        await sched.resumeMission(resumeMatch[1]);
-        return json(res, { status: "resumed", mission_id: resumeMatch[1] });
-      } catch (err) {
-        return error(res, (err as Error).message, 409);
-      }
-    }
-
-    // SSE events
-    const eventsMatch = url.pathname.match(/^\/api\/missions\/([^/]+)\/events$/);
-    if (eventsMatch && method === "GET") {
-      const missionId = eventsMatch[1];
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "Access-Control-Allow-Origin": "*",
+  /** 启动服务 */
+  start(port: number = 3620): Promise<void> {
+    return new Promise((resolve) => {
+      this.server = http.createServer((req, res) => this.handleRequest(req, res));
+      this.server.listen(port, () => {
+        console.log(`\n  🚀 MRX Runtime API: http://localhost:${port}/api/v1`);
+        console.log(`  📋 ${this.routes.length} 个端点已注册`);
+        resolve();
       });
+    });
+  }
 
-      // 发送已有事件
-      const mrxRoot = path.resolve(import.meta.dirname, "../..");
-      const storageRoot = process.env.MRX_STORAGE_ROOT || path.join(mrxRoot, "storage");
-      const eventsPath = path.join(storageRoot, "events", missionId, "events.jsonl");
-      if (fs.existsSync(eventsPath)) {
-        const lines = fs.readFileSync(eventsPath, "utf-8").trim().split("\n").slice(-20);
-        for (const line of lines) {
-          res.write(`data: ${line}\n\n`);
+  /** 停止 */
+  stop(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.server) {
+        this.server.close(() => resolve());
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    // CORS
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    const url = new URL(req.url || "/", `http://localhost`);
+    const method = req.method as HttpMethod;
+
+    // 解析 body
+    let body: any = null;
+    if (method === "POST" || method === "PATCH") {
+      body = await this.parseBody(req);
+    }
+
+    // 匹配路由
+    for (const route of this.routes) {
+      if (route.method !== method) continue;
+
+      const match = url.pathname.match(route.path);
+      if (!match) continue;
+
+      // 认证检查
+      if (route.authRequired !== false && this.apiKey) {
+        const auth = req.headers["authorization"];
+        if (!auth || auth !== `Bearer ${this.apiKey}`) {
+          this.sendJson(res, 401, { code: "UNAUTHORIZED", message: "Invalid or missing API key" });
+          return;
         }
       }
 
-      // 每 2 秒发送心跳
-      const interval = setInterval(() => {
-        res.write(`: heartbeat\n\n`);
-      }, 2000);
-
-      req.on("close", () => clearInterval(interval));
+      try {
+        const params = match.groups || {};
+        const result = await route.handler(req, params, body);
+        this.sendJson(res, result.status, result.body, result.headers);
+      } catch (err) {
+        this.sendJson(res, 500, {
+          code: "INTERNAL_ERROR",
+          message: (err as Error).message,
+        });
+      }
       return;
     }
 
     // 404
-    error(res, "Not found", 404);
-  } catch (err) {
-    console.error("API error:", err);
-    error(res, "Internal server error", 500);
+    this.sendJson(res, 404, { code: "NOT_FOUND", message: `No route: ${method} ${url.pathname}` });
+  }
+
+  private async parseBody(req: http.IncomingMessage): Promise<any> {
+    return new Promise((resolve) => {
+      let data = "";
+      req.on("data", chunk => data += chunk);
+      req.on("end", () => {
+        try { resolve(JSON.parse(data)); }
+        catch { resolve(null); }
+      });
+    });
+  }
+
+  private sendJson(res: http.ServerResponse, status: number, body: any, headers?: Record<string, string>): void {
+    const json = JSON.stringify(body);
+    res.writeHead(status, {
+      "Content-Type": "application/json",
+      "Content-Length": String(Buffer.byteLength(json)),
+      ...headers,
+    });
+    res.end(json);
   }
 }
-
-// ============================================================
-// 启动
-// ============================================================
-
-const server = http.createServer(handleRequest);
-
-process.on("SIGINT", async () => {
-  console.log("\n🛑 Shutting down...");
-  if (scheduler) await scheduler.shutdownScheduler();
-  server.close(() => process.exit(0));
-});
-
-server.listen(PORT, () => {
-  console.log(`\n🚀 MRX API Server listening on http://localhost:${PORT}`);
-  console.log(`   Health:  http://localhost:${PORT}/health`);
-  console.log(`   Missions: http://localhost:${PORT}/api/missions`);
-  console.log(`   Stats:   http://localhost:${PORT}/api/stats\n`);
-});
