@@ -18,6 +18,9 @@ import { CheckpointManager } from "../checkpoint/checkpoint.js";
 import { DagPlanner } from "../planner/dag-planner.js";
 import { Reflector } from "../reflector/reflector.js";
 import { RecoveryEngineV2 } from "../recovery/recovery-engine-v2.js";
+import { newTraceId, createLogger } from "../utils/logger.js";
+
+const log = createLogger("loop-engine");
 import { EventBus } from "../eventbus/event-bus.js";
 import { SupervisorAgent } from "../../agents/supervisor.js";
 import { OpenClawAdapter } from "../../adapters/openclaw.js";
@@ -84,8 +87,11 @@ export class LoopEngine {
   // ============================================================
 
   async start(): Promise<void> {
+    newTraceId(`mrx_${this.config.mission.id}`);
+    log.info("Mission starting", { name: this.config.mission.name, objective: this.config.objective[0] });
+
     if (this.state.hasUnfinishedMission()) {
-      console.log("🔁 检测到未完成的 Mission，从断点恢复...");
+      log.info("Resuming unfinished mission");
       this.state.load();
       await this.resume();
       return;
