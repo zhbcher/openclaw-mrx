@@ -129,6 +129,13 @@ CREATE INDEX IF NOT EXISTS idx_events_mission ON events(mission_id);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp);
 
+-- V1 性能索引
+CREATE INDEX IF NOT EXISTS idx_goal_objective ON goals(objective_id);
+CREATE INDEX IF NOT EXISTS idx_goal_status ON goals(status);
+CREATE INDEX IF NOT EXISTS idx_task_goal ON tasks(goal_id);
+CREATE INDEX IF NOT EXISTS idx_task_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_mission_status ON missions(status);
+
 -- ============================================================
 -- Locks (lease-based, not file-based)
 -- ============================================================
@@ -160,3 +167,6 @@ CREATE TABLE IF NOT EXISTS memory_entries (
   created_at  TEXT NOT NULL,
   last_recalled_at TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_entries(type);
+CREATE INDEX IF NOT EXISTS idx_memory_mission ON memory_entries(mission_id);

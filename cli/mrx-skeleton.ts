@@ -16,6 +16,8 @@ import { GoalValidator } from "../core/planner/goal-validator.js";
 import { getDatabase, migrate, closeDatabase } from "../core/state-graph/database.js";
 import { TransactionManager, LeaseLock } from "../core/state-graph/transaction-manager.js";
 import * as path from "path";
+import * as fs from "fs";
+import * as os from "os";
 
 // ============================================================
 // LLM Client — 调用 OpenClaw 的当前模型
@@ -610,6 +612,37 @@ async function handleTests() {
       console.log(`   ✅ PASS: 4 个端点全部正常`);
       passed++;
     } else { console.log("   ❌ FAIL: API 响应异常"); failed++; }
+  } catch (err) { console.log("   ❌ FAIL:", (err as Error).message); failed++; }
+
+  // Test 14: V1 — Executor + Security + Budget
+  console.log("\n📋 Test 14: V1 — Executor + Security + Budget Guard");
+  try {
+    const { CommandExecutor } = await import("../core/executor/command-executor.js");
+    const { FileExecutor } = await import("../core/executor/file-executor.js");
+    const { ExecutorRegistry } = await import("../core/executor/executor-registry.js");
+    const { BudgetGuard } = await import("../core/budget/budget-guard.js");
+    
+    const ws = fs.mkdtempSync(os.tmpdir() + "/mrx_test_");
+    const cmd = new CommandExecutor(ws);
+    const file = new FileExecutor(ws);
+    const reg = new ExecutorRegistry().register(cmd).register(file);
+    
+    // 测试命令执行
+    const r1 = await reg.dispatch({ description: "t", workingDir: ws, action: { type: "shell", target: "echo ok" } });
+    
+    // 测试安全检查
+    const r2 = await cmd.execute({ description: "t", workingDir: ws, action: { type: "shell", target: "rm -rf /" } });
+    
+    // 测试预算
+    const guard = new BudgetGuard({ maxIterations: 10, maxFailures: 3, maxTokens: 1000 });
+    const budget = guard.check(5, 1, 500);
+    
+    fs.rmSync(ws, { recursive: true });
+    
+    if (r1.success && !r2.success && !budget.exceeded) {
+      console.log("   ✅ PASS: 执行 + 安全 + 预算全部正常");
+      passed++;
+    } else { console.log("   ❌ FAIL"); failed++; }
   } catch (err) { console.log("   ❌ FAIL:", (err as Error).message); failed++; }
 
   // Summary

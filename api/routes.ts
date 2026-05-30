@@ -1,7 +1,5 @@
 /**
- * API Routes — 注册全部端点
- * 
- * 按照 openapi.yaml 定义的 7 个资源组 + 26 个端点
+ * API Routes — 注册全部端点（zod validated）
  */
 
 import { ApiServer, type Route } from "../api/server.js";
@@ -11,7 +9,18 @@ import { GoalStore } from "../core/state-graph/goal-store.js";
 import { GoalEngine } from "../core/goal/goal-engine.js";
 import { CheckpointManagerV2 } from "../core/checkpoint/checkpoint-v2.js";
 import { MetricsEngine } from "../core/metrics/metrics-engine.js";
-import { getDatabase, migrate } from "../core/state-graph/database.js";
+import { getDatabase } from "../core/state-graph/database.js";
+import {
+  validate,
+  CreateObjectiveSchema, ListObjectivesSchema,
+  CreateGoalSchema, UpdateGoalSchema, ListGoalsSchema,
+  CreateMissionSchema, ListMissionsSchema,
+  RollbackSchema,
+} from "./validators/schemas.js";
+
+function badRequest(msg: string) {
+  return { status: 400, body: { code: "VALIDATION_ERROR", message: msg } };
+}
 
 export function registerAllRoutes(server: ApiServer): void {
   const objectiveEngine = new ObjectiveEngine();
@@ -29,15 +38,14 @@ export function registerAllRoutes(server: ApiServer): void {
       method: "POST",
       path: /^\/api\/v1\/objectives$/,
       handler: async (_req, _params, body) => {
-        if (!body?.title) {
-          return { status: 400, body: { code: "VALIDATION_ERROR", message: "title is required" } };
-        }
+        const v = validate(CreateObjectiveSchema, body);
+        if (!v.success) return badRequest(v.error);
         const obj = objectiveEngine.create({
-          title: body.title,
-          description: body.description,
-          priority: body.priority,
-          tags: body.tags,
-          workingDir: body.context?.working_dir,
+          title: v.data.title,
+          description: v.data.description,
+          priority: v.data.priority,
+          tags: v.data.tags,
+          workingDir: v.data.context?.working_dir,
         });
         return { status: 201, body: obj };
       },
@@ -46,20 +54,15 @@ export function registerAllRoutes(server: ApiServer): void {
       method: "GET",
       path: /^\/api\/v1\/objectives$/,
       handler: async (_req, params) => {
-        const { status, priority, limit, offset } = params;
+        const v = validate(ListObjectivesSchema, params);
+        if (!v.success) return badRequest(v.error);
         const objectives = objectiveStore.list({
-          status, priority,
-          limit: limit ? parseInt(limit) : 20,
-          offset: offset ? parseInt(offset) : 0,
+          status: v.data.status, priority: v.data.priority,
+          limit: v.data.limit, offset: v.data.offset,
         });
-        return {
-          status: 200,
-          body: objectives.map(o => ({
-            id: o.id, title: o.title, status: o.status,
-            progress: o.progress, priority: o.priority,
-            created_at: o.created_at,
-          })),
-        };
+        return { status: 200, body: objectives.map(o => ({
+          id: o.id, title: o.title, status: o.status, progress: o.progress, priority: o.priority, created_at: o.created_at,
+        })) };
       },
     },
     {
@@ -67,7 +70,7 @@ export function registerAllRoutes(server: ApiServer): void {
       path: /^\/api\/v1\/objectives\/(?<objective_id>[^/]+)$/,
       handler: async (_req, params) => {
         const obj = objectiveEngine.getFull(params.objective_id);
-        if (!obj) return { status: 404, body: { code: "NOT_FOUND", message: "Objective not found" } };
+        if (!obj) return { status: 404, body: { code: "NOT_FOUND" } };
         return { status: 200, body: obj };
       },
     },
@@ -76,7 +79,6 @@ export function registerAllRoutes(server: ApiServer): void {
       path: /^\/api\/v1\/objectives\/(?<objective_id>[^/]+)$/,
       handler: async (_req, params) => {
         try {
-          // 先删子记录（goals 有 CASCADE, 手工保证 missions）
           const db = getDatabase();
           db.prepare("DELETE FROM missions WHERE objective_id = ?").run(params.objective_id);
           db.prepare("DELETE FROM goals WHERE objective_id = ?").run(params.objective_id);
@@ -93,20 +95,14 @@ export function registerAllRoutes(server: ApiServer): void {
       handler: async (_req, params) => {
         const obj = objectiveEngine.getFull(params.objective_id);
         if (!obj) return { status: 404, body: { code: "NOT_FOUND" } };
-        const goals = obj.goals.map(g => ({
-          goal_id: g.id, goal_title: g.title, status: g.status,
-          progress: g.progress, tasks_done: 0, tasks_total: g.task_ids.length,
-          tasks_failed: 0, is_blocked: g.status === "blocked",
-        }));
-        return {
-          status: 200,
-          body: {
-            objective_id: obj.id,
-            objective_title: obj.title,
-            overall: obj.progress,
-            goals,
-          },
-        };
+        return { status: 200, body: {
+          objective_id: obj.id, objective_title: obj.title, overall: obj.progress,
+          goals: obj.goals.map(g => ({
+            goal_id: g.id, goal_title: g.title, status: g.status,
+            progress: g.progress, tasks_done: 0, tasks_total: g.task_ids.length,
+            tasks_failed: 0, is_blocked: g.status === "blocked",
+          })),
+        } };
       },
     },
 
@@ -117,17 +113,16 @@ export function registerAllRoutes(server: ApiServer): void {
       method: "POST",
       path: /^\/api\/v1\/objectives\/(?<objective_id>[^/]+)\/goals$/,
       handler: async (_req, params, body) => {
-        if (!body?.title || !body?.deliverable) {
-          return { status: 400, body: { code: "VALIDATION_ERROR", message: "title and deliverable required" } };
-        }
+        const v = validate(CreateGoalSchema, body);
+        if (!v.success) return badRequest(v.error);
         const goal = goalStore.create({
           id: `goal_${Date.now()}`,
           objective_id: params.objective_id,
-          title: body.title,
-          description: body.description,
-          deliverable: body.deliverable,
-          complexity: body.estimated_complexity,
-          depends_on: body.depends_on,
+          title: v.data.title,
+          description: v.data.description,
+          deliverable: v.data.deliverable,
+          complexity: v.data.estimated_complexity,
+          depends_on: v.data.depends_on,
         });
         return { status: 201, body: goal };
       },
@@ -153,11 +148,10 @@ export function registerAllRoutes(server: ApiServer): void {
       method: "PATCH",
       path: /^\/api\/v1\/goals\/(?<goal_id>[^/]+)$/,
       handler: async (_req, params, body) => {
-        if (body?.status) {
-          goalStore.updateStatus(params.goal_id, body.status, body.error);
-        }
-        const goal = goalStore.getById(params.goal_id);
-        return { status: 200, body: goal };
+        const v = validate(UpdateGoalSchema, body);
+        if (!v.success) return badRequest(v.error);
+        if (v.data.status) goalStore.updateStatus(params.goal_id, v.data.status, v.data.error);
+        return { status: 200, body: goalStore.getById(params.goal_id) };
       },
     },
     {
@@ -167,15 +161,11 @@ export function registerAllRoutes(server: ApiServer): void {
         const goal = goalStore.getById(params.goal_id);
         if (!goal) return { status: 404, body: { code: "NOT_FOUND" } };
         const deps = goalEngine.getDependencyStatus(params.goal_id);
-        return {
-          status: 200,
-          body: {
-            goal_id: goal.id, goal_title: goal.title,
-            status: goal.status, progress: goal.progress,
-            tasks_done: 0, tasks_total: JSON.parse(goal.task_ids).length,
-            tasks_failed: 0, is_blocked: !deps.allSatisfied,
-          },
-        };
+        return { status: 200, body: {
+          goal_id: goal.id, goal_title: goal.title, status: goal.status, progress: goal.progress,
+          tasks_done: 0, tasks_total: JSON.parse(goal.task_ids).length, tasks_failed: 0,
+          is_blocked: !deps.allSatisfied,
+        } };
       },
     },
 
@@ -186,36 +176,36 @@ export function registerAllRoutes(server: ApiServer): void {
       method: "POST",
       path: /^\/api\/v1\/missions$/,
       handler: async (_req, _params, body) => {
-        if (!body?.objective_id) {
-          return { status: 400, body: { code: "VALIDATION_ERROR", message: "objective_id required" } };
-        }
+        const v = validate(CreateMissionSchema, body);
+        if (!v.success) return badRequest(v.error);
         const now = new Date().toISOString();
         const missionId = `mission_${Date.now()}`;
         const db = getDatabase();
-        db.prepare(`INSERT INTO missions (id, objective_id, status, created_at, updated_at)
-          VALUES (?, ?, 'created', ?, ?)`).run(missionId, body.objective_id, now, now);
-        return { status: 201, body: { id: missionId, objective_id: body.objective_id, status: "created" } };
+        db.prepare("INSERT INTO missions (id, objective_id, status, created_at, updated_at) VALUES (?, ?, 'created', ?, ?)")
+          .run(missionId, v.data.objective_id, now, now);
+        return { status: 201, body: { id: missionId, objective_id: v.data.objective_id, status: "created" } };
       },
     },
     {
       method: "GET",
       path: /^\/api\/v1\/missions$/,
       handler: async (_req, params) => {
+        const v = validate(ListMissionsSchema, params);
+        if (!v.success) return badRequest(v.error);
         const db = getDatabase();
-        let sql = "SELECT * FROM missions";
+        let sql = "SELECT * FROM missions WHERE 1=1";
         const args: any[] = [];
-        if (params.status) { sql += " WHERE status = ?"; args.push(params.status); }
-        sql += " ORDER BY created_at DESC LIMIT 50";
-        const missions = db.prepare(sql).all(...args);
-        return { status: 200, body: missions };
+        if (v.data.status) { sql += " AND status = ?"; args.push(v.data.status); }
+        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        args.push(v.data.limit, v.data.offset);
+        return { status: 200, body: db.prepare(sql).all(...args) };
       },
     },
     {
       method: "GET",
       path: /^\/api\/v1\/missions\/(?<mission_id>[^/]+)$/,
       handler: async (_req, params) => {
-        const db = getDatabase();
-        const mission = db.prepare("SELECT * FROM missions WHERE id = ?").get(params.mission_id);
+        const mission = getDatabase().prepare("SELECT * FROM missions WHERE id = ?").get(params.mission_id);
         if (!mission) return { status: 404, body: { code: "NOT_FOUND" } };
         return { status: 200, body: mission };
       },
@@ -224,8 +214,7 @@ export function registerAllRoutes(server: ApiServer): void {
       method: "POST",
       path: /^\/api\/v1\/missions\/(?<mission_id>[^/]+)\/pause$/,
       handler: async (_req, params) => {
-        const db = getDatabase();
-        db.prepare("UPDATE missions SET status = 'paused', updated_at = ? WHERE id = ?")
+        getDatabase().prepare("UPDATE missions SET status = 'paused', updated_at = ? WHERE id = ?")
           .run(new Date().toISOString(), params.mission_id);
         return { status: 200, body: { success: true } };
       },
@@ -234,8 +223,7 @@ export function registerAllRoutes(server: ApiServer): void {
       method: "POST",
       path: /^\/api\/v1\/missions\/(?<mission_id>[^/]+)\/resume$/,
       handler: async (_req, params) => {
-        const db = getDatabase();
-        db.prepare("UPDATE missions SET status = 'running', updated_at = ? WHERE id = ?")
+        getDatabase().prepare("UPDATE missions SET status = 'running', updated_at = ? WHERE id = ?")
           .run(new Date().toISOString(), params.mission_id);
         return { status: 200, body: { success: true } };
       },
@@ -265,10 +253,9 @@ export function registerAllRoutes(server: ApiServer): void {
       method: "POST",
       path: /^\/api\/v1\/missions\/(?<mission_id>[^/]+)\/rollback$/,
       handler: async (_req, _params, body) => {
-        if (!body?.checkpoint_id) {
-          return { status: 400, body: { code: "VALIDATION_ERROR", message: "checkpoint_id required" } };
-        }
-        const result = await checkpointMgr.rollback(body.checkpoint_id);
+        const v = validate(RollbackSchema, body);
+        if (!v.success) return badRequest(v.error);
+        const result = await checkpointMgr.rollback(v.data.checkpoint_id);
         return { status: 200, body: result };
       },
     },
@@ -289,8 +276,7 @@ export function registerAllRoutes(server: ApiServer): void {
       method: "GET",
       path: /^\/api\/v1\/reports\/global$/,
       handler: async () => {
-        const report = metricsEngine.getGlobalMetrics();
-        return { status: 200, body: report };
+        return { status: 200, body: metricsEngine.getGlobalMetrics() };
       },
     },
   ];
