@@ -3,6 +3,8 @@
 > **Autonomous Agent Runtime.** Not a skill. Not a script. A long-running mission execution engine.
 >
 > 15 phases. 65 files. ~12,500 lines. CI: ![CI](https://github.com/zhbcher/openclaw-mrx/actions/workflows/ci.yml/badge.svg) 45/45 tests.
+>
+> 📖 [中文文档](README.zh-CN.md)
 
 MRX transforms an AI agent from "one-shot prompt responder" into a **persistent autonomous executor** that plans, executes, validates, recovers, remembers, and reports — across hours or days.
 
