@@ -2,7 +2,7 @@
 
 > **Autonomous Agent Runtime.** Not a skill. Not a script. A long-running mission execution engine.
 >
-> 15 phases. 42 files. ~11,000 lines of code. CI: ![CI](https://github.com/zhbcher/openclaw-mrx/actions/workflows/ci.yml/badge.svg) 15/15 tests.
+> 15 phases. 65 files. ~12,500 lines. CI: ![CI](https://github.com/zhbcher/openclaw-mrx/actions/workflows/ci.yml/badge.svg) 45/45 tests.
 
 MRX transforms an AI agent from "one-shot prompt responder" into a **persistent autonomous executor** that plans, executes, validates, recovers, remembers, and reports — across hours or days.
 
@@ -17,11 +17,11 @@ cd openclaw-mrx && npm install
 # Run the full test suite (15 tests)
 npx tsx cli/mrx-skeleton.ts test
 
-# V2 test suite (10 tests: tool + hybrid recall + semantic)
-npx tsx test/v2-integration-test.ts
-
-# V1 executor tests
-npx tsx test/v1-executor-test.ts
+# All test suites (45 tests total)
+npx tsx cli/mrx-skeleton.ts test      # Main: 15 tests
+npx tsx test/v1-executor-test.ts      # V1:  12 tests
+npx tsx test/v2-integration-test.ts   # V2:  10 tests
+npx tsx test/p0-new-test.ts           # P0:   8 tests
 
 # Create and plan an objective
 npx tsx cli/mrx-skeleton.ts run "开发股票交易系统"
@@ -150,10 +150,13 @@ GET    /api/v1/reports/mission/:id             Mission Report
 GET    /api/v1/reports/global                  Global Report
 ```
 
-## Test Suite (15/15 ✅)
+## Test Suite (45/45 ✅)
 
 ```bash
-npx tsx cli/mrx-skeleton.ts test
+npx tsx cli/mrx-skeleton.ts test      # Main:   15 tests  (core + P0-V2 + API)
+npx tsx test/v1-executor-test.ts       # V1:     12 tests  (executor + security)
+npx tsx test/v2-integration-test.ts    # V2:     10 tests  (tool + hybrid + semantic)
+npx tsx test/p0-new-test.ts            # P0:      8 tests  (scheduler + vector + failure)
 ```
 
 | # | Test | Phase |
@@ -173,6 +176,10 @@ npx tsx cli/mrx-skeleton.ts test
 | 13 | Runtime API — POST/GET/PATCH/DELETE (zod validated) | P3 |
 | 14 | V1 — Executor + Security + Budget Guard | V1 |
 | 15 | V2 — Tool Executor + Hybrid Recall + Semantic | V2 |
+
+**V1 专项 (12 tests):** Executor + Security + Budget  
+**V2 专项 (10 tests):** Tool + Hybrid Recall + Semantic  
+**P0 专项 (8 tests):** DAG Scheduler + Vector Store + Failure Memory
 
 ## V2 新增能力
 
@@ -199,10 +206,21 @@ npx tsx cli/mrx-skeleton.ts test
 
 | 能力 | 实现 |
 |:---|:---|
-| **结构化日志** | createLogger + Trace ID 全链路追踪 + 4 级日志 |
+| **结构化日志** | createLogger + Trace ID 全链路 + 4 级日志 |
+| **结构化错误** | ErrorCode 枚举 (8 种) + MRXError (retryable) + withErrorHandling |
 | **API 认证** | Bearer Token + 3 级权限 (read/write/admin) + 速率限制 |
-| **CI/CD** | GitHub Actions: 3 Node 版本 × (tsc + 4 test suites + build) |
-| **贡献指南** | CONTRIBUTING.md: 项目结构、代码规范、Mission 模板 |
+| **CI/CD** | GitHub Actions: 3 Node 版本 × (tsc + 4 suites + build) |
+| **测试数据清理** | cleanupTestData() SQL 级清理，比 rm -f 更快 |
+| **贡献指南** | CONTRIBUTING.md + 2 个 Mission 模板 |
+
+## 性能优化
+
+| 优化 | 说明 |
+|:---|:---|
+| **Recall 缓存** | 30s TTL，100次Loop从100次IO降至每30s一次 |
+| **Command Set** | 白名单 Array(O(n))→Set(O(1)) 查找 |
+| **drain 事件驱动** | setTimeout轮询→await waitOne，零延迟 |
+| **save 防抖** | 100ms内多次状态变更合并为一次磁盘写 |
 
 ## Design Documents
 
@@ -228,11 +246,14 @@ Architecture decisions and contracts are in the workspace `design/` directory:
 ✅ P0: Core Runtime     (7/7 — Objective, Goal, Planner, StateGraph, MemoryRecall, QMD Lite)
 ✅ P1: Resilience       (3/3 — Checkpoint Rollback, Recovery V2, Verifier Chain)
 ✅ P2: Supervision      (2/2 — Quality Manager, Metrics Engine)
-✅ P3: External API     (1/1 — Runtime REST API + zod validation)
+✅ P3: External API     (1/1 — Runtime REST API + zod + Auth)
 ✅ V1: Executor         (5/5 — Executor, Command, File, Registry, Budget Guard)
 ✅ V2: Intelligence      (4/4 — Tool Executor, Hybrid Recall, Semantic Validator, Loop Execute)
+✅ P0-NEW: Scale         (3/3 — DAG Scheduler, Vector Store, Failure Memory)
+✅ ENGR: Engineering     (4/4 — Logger, Auth MW, CI/CD, CONTRIBUTING)
+✅ PERF: Optimization    (4/4 — Recall Cache, Set Lookup, Event Drain, Save Debounce)
 ─────────────────────────────────────────────────────────
-   15/15 PHASES COMPLETE
+   ALL PHASES COMPLETE
 ```
 
 ## License
