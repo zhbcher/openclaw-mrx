@@ -1,8 +1,11 @@
 /**
- * @deprecated 请使用 core/state-graph/ 下的 SQLite stores（ObjectiveStore, GoalStore）。
- *   本模块保留用于向后兼容，新代码请使用 getDatabase() + state-graph stores。
+ * State Manager — 循环内临时状态（phase/iteration/verification）
+ * 
+ * ⚠️  职责分离：
+ *   - 本模块：Loop Engine 内部临时状态（阶段/循环数/验证历史/裁决历史）
+ *   - SQLite stores：持久化实体数据（Objective/Goal/Task/Mission CRUD）
  *
- * 原注释：Phase 1 单 Agent 场景 state.yaml 读写，已被 SQLite WAL 替代。
+ * 不废弃。Loop Engine 的临时状态不需要持久化到 SQLite。
  */
 
 import * as fs from "fs";

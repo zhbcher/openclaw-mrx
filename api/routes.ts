@@ -95,13 +95,27 @@ export function registerAllRoutes(server: ApiServer): void {
       handler: async (_req, params) => {
         const obj = objectiveEngine.getFull(params.objective_id);
         if (!obj) return { status: 404, body: { code: "NOT_FOUND" } };
+        const db = getDatabase();
         return { status: 200, body: {
           objective_id: obj.id, objective_title: obj.title, overall: obj.progress,
-          goals: obj.goals.map(g => ({
-            goal_id: g.id, goal_title: g.title, status: g.status,
-            progress: g.progress, tasks_done: 0, tasks_total: g.task_ids.length,
-            tasks_failed: 0, is_blocked: g.status === "blocked",
-          })),
+          goals: obj.goals.map(g => {
+            // 实时查询 Task 状态
+            const taskIds: string[] = JSON.parse(JSON.stringify(g.task_ids));
+            let tasksDone = 0, tasksFailed = 0, tasksTotal = taskIds.length;
+            if (tasksTotal > 0) {
+              const placeholders = taskIds.map(() => "?").join(",");
+              const rows = db.prepare(`SELECT status, COUNT(*) as c FROM tasks WHERE id IN (${placeholders}) GROUP BY status`).all(...taskIds) as any[];
+              for (const r of rows) {
+                if (r.status === "done") tasksDone = r.c;
+                if (r.status === "failed") tasksFailed = r.c;
+              }
+            }
+            return {
+              goal_id: g.id, goal_title: g.title, status: g.status,
+              progress: g.progress, tasks_done: tasksDone, tasks_total: tasksTotal,
+              tasks_failed: tasksFailed, is_blocked: g.status === "blocked",
+            };
+          }),
         } };
       },
     },
@@ -161,9 +175,22 @@ export function registerAllRoutes(server: ApiServer): void {
         const goal = goalStore.getById(params.goal_id);
         if (!goal) return { status: 404, body: { code: "NOT_FOUND" } };
         const deps = goalEngine.getDependencyStatus(params.goal_id);
+        
+        // 实时查询 Task 状态
+        const db = getDatabase();
+        const taskIds: string[] = JSON.parse(goal.task_ids);
+        let tasksDone = 0, tasksFailed = 0;
+        if (taskIds.length > 0) {
+          const rows = db.prepare(`SELECT status, COUNT(*) as c FROM tasks WHERE id IN (${taskIds.map(() => "?").join(",")}) GROUP BY status`).all(...taskIds) as any[];
+          for (const r of rows) {
+            if (r.status === "done") tasksDone = r.c;
+            if (r.status === "failed") tasksFailed = r.c;
+          }
+        }
+        
         return { status: 200, body: {
           goal_id: goal.id, goal_title: goal.title, status: goal.status, progress: goal.progress,
-          tasks_done: 0, tasks_total: JSON.parse(goal.task_ids).length, tasks_failed: 0,
+          tasks_done: tasksDone, tasks_total: taskIds.length, tasks_failed: tasksFailed,
           is_blocked: !deps.allSatisfied,
         } };
       },

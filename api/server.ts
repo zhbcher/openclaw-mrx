@@ -8,6 +8,7 @@
 import * as http from "http";
 import * as fs from "fs";
 import * as path from "path";
+import { authenticate, authorize, checkRateLimit } from "./middleware/auth.js";
 
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
@@ -27,11 +28,8 @@ export interface RouteResponse {
 export class ApiServer {
   private routes: Route[] = [];
   private server: http.Server | null = null;
-  private apiKey: string | null = null;
 
-  constructor(options?: { apiKey?: string }) {
-    this.apiKey = options?.apiKey || null;
-  }
+  constructor() {}
 
   /** 注册路由 */
   addRoute(route: Route): this {
@@ -96,11 +94,28 @@ export class ApiServer {
       const match = url.pathname.match(route.path);
       if (!match) continue;
 
-      // 认证检查
-      if (route.authRequired !== false && this.apiKey) {
-        const auth = req.headers["authorization"];
-        if (!auth || auth !== `Bearer ${this.apiKey}`) {
+      // 认证 + 授权 + 速率限制
+      if (route.authRequired !== false) {
+        const authCtx = authenticate(req);
+        
+        // 速率限制
+        const clientIp = req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown";
+        if (!checkRateLimit(clientIp, 100, 60000)) {
+          this.sendJson(res, 429, { code: "RATE_LIMITED", message: "Too many requests" });
+          return;
+        }
+
+        // 认证
+        if (!authCtx.authenticated) {
           this.sendJson(res, 401, { code: "UNAUTHORIZED", message: "Invalid or missing API key" });
+          return;
+        }
+
+        // 授权（高风险操作需要 admin）
+        const action = `${method} ${url.pathname}`;
+        const authz = authorize(authCtx, action);
+        if (!authz.allowed) {
+          this.sendJson(res, 403, { code: "FORBIDDEN", message: authz.reason! });
           return;
         }
       }

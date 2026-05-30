@@ -591,20 +591,22 @@ async function handleTests() {
     const port = 3622;
     await srv.start(port);
     
+    const headers = { "Content-Type": "application/json", "Authorization": "Bearer mrx-dev-key" };
+    const getHeaders = { "Authorization": "Bearer mrx-dev-key" };
     const B = `http://localhost:${port}/api/v1`;
     
     // 创建
-    const r1 = await (await fetch(`${B}/objectives`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "API Quick Test" }) })).json() as any;
+    const r1 = await (await fetch(`${B}/objectives`, { method: "POST", headers, body: JSON.stringify({ title: "API Quick Test" }) })).json() as any;
     
     // 列出
-    const r2 = await (await fetch(`${B}/objectives`)).json() as any[];
+    const r2 = await (await fetch(`${B}/objectives`, { headers: getHeaders })).json() as any[];
     
     // 详情
-    const r3 = await (await fetch(`${B}/objectives/${r1.id}`)).json() as any;
+    const r3 = await (await fetch(`${B}/objectives/${r1.id}`, { headers: getHeaders })).json() as any;
     
     // 创建 goal
-    await fetch(`${B}/objectives/${r1.id}/goals`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "G", deliverable: "done" }) });
-    const r4 = await (await fetch(`${B}/objectives/${r1.id}/goals`)).json() as any[];
+    await fetch(`${B}/objectives/${r1.id}/goals`, { method: "POST", headers, body: JSON.stringify({ title: "G", deliverable: "done" }) });
+    const r4 = await (await fetch(`${B}/objectives/${r1.id}/goals`, { headers: getHeaders })).json() as any[];
     
     await srv.stop();
     

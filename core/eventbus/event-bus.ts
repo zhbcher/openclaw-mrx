@@ -114,4 +114,42 @@ export class EventBus {
     }
     return stats;
   }
+
+  /**
+   * 查询历史事件（内存 + JSONL 文件）
+   */
+  queryEvents(filters?: {
+    kind?: string;
+    missionId?: string;
+    since?: string;
+    limit?: number;
+  }): MRXEvent[] {
+    const results: MRXEvent[] = [];
+    const { kind, missionId, since, limit = 50 } = filters || {};
+
+    // 1. 从 JSONL 文件读取历史事件
+    const filePath = path.join(this.eventsDir, "events.jsonl");
+    if (fs.existsSync(filePath)) {
+      const lines = fs.readFileSync(filePath, "utf-8").split("\n").filter(Boolean);
+      for (const line of lines) {
+        try {
+          const event = JSON.parse(line) as MRXEvent;
+          if (kind && event.kind !== kind) continue;
+          if (missionId && event.mission_id !== missionId) continue;
+          if (since && event.timestamp < since) continue;
+          results.push(event);
+        } catch { /* skip corrupt lines */ }
+      }
+    }
+
+    // 2. 从内存 buffer 读取
+    for (const event of this.eventsLog) {
+      if (kind && event.kind !== kind) continue;
+      if (missionId && event.mission_id !== missionId) continue;
+      if (since && event.timestamp < since) continue;
+      results.push(event);
+    }
+
+    return results.slice(0, limit);
+  }
 }
