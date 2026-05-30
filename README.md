@@ -26,13 +26,13 @@ npx tsx test/v2-integration-test.ts   # V2:  10 tests
 npx tsx test/p0-new-test.ts           # P0:   8 tests
 
 # Create and plan an objective
-npx tsx cli/mrx-skeleton.ts run "开发股票交易系统"
+npx tsx cli/mrx-skeleton.ts run "Build a stock trading system"
 
 # View status
 npx tsx cli/mrx-skeleton.ts status <objective_id>
 
 # Search memory
-npx tsx cli/mrx-skeleton.ts recall "JWT鉴权"
+npx tsx cli/mrx-skeleton.ts recall "JWT auth"
 
 # Start the REST API
 npx tsx test/p3-api-test.ts   # 12 endpoint tests included
@@ -46,11 +46,11 @@ npx tsx test/p3-api-test.ts   # 12 endpoint tests included
                     User Objective
                          │
               ┌──────────▼──────────┐
-              │  Objective Engine   │  P0: 层次化目标
+              │  Objective Engine   │  P0: Hierarchical goals
               └──────────┬──────────┘
                          │
               ┌──────────▼──────────┐
-              │  Hybrid Planner     │  P0: LLM拆Goal + 规则校验
+              │  Hybrid Planner     │  P0: LLM decompose + Rule validate
               └──────────┬──────────┘
                          │
               ┌──────────▼──────────┐
@@ -179,50 +179,50 @@ npx tsx test/p0-new-test.ts            # P0:      8 tests  (scheduler + vector +
 | 14 | V1 — Executor + Security + Budget Guard | V1 |
 | 15 | V2 — Tool Executor + Hybrid Recall + Semantic | V2 |
 
-**V1 专项 (12 tests):** Executor + Security + Budget  
-**V2 专项 (10 tests):** Tool + Hybrid Recall + Semantic  
-**P0 专项 (8 tests):** DAG Scheduler + Vector Store + Failure Memory
+**V1 suite (12 tests):** Executor + Security + Budget  
+**V2 suite (10 tests):** Tool + Hybrid Recall + Semantic  
+**P0 suite (8 tests):** DAG Scheduler + Vector Store + Failure Memory
 
-## V2 新增能力
+## V2 Capabilities
 
-| 能力 | 实现 |
+| Capability | Implementation |
 |:---|:---|
-| **Tool Executor** | 6 内置工具 (git.status/commit, npm.test/build/install, lint) + 风险分级 |
-| **Hybrid Recall** | 0.3*BM25 + 0.5*Embedding + 0.2*Recency 混合打分 |
-| **Semantic Validator** | Cosine Similarity + Jaccard fallback + 相似度矩阵可视化 |
-| **Loop Execute** | Plan→Execute→Validate 闭环, ExecutorRegistry 3种executor自动分发 |
+| **Tool Executor** | 6 built-in tools (git.status/commit, npm.test/build/install, lint) + risk gating |
+| **Hybrid Recall** | 0.3*BM25 + 0.5*Embedding + 0.2*Recency multi-signal fusion |
+| **Semantic Validator** | Cosine Similarity + Jaccard fallback + similarity matrix |
+| **Loop Execute** | Plan→Execute→Validate closed loop, ExecutorRegistry auto-dispatch |
 
-## V1 新增能力
+## V1 Capabilities
 
-| 能力 | 实现 |
+| Capability | Implementation |
 |:---|:---|
-| **任务执行** | Command Executor (Allowlist 30条 + Blocklist 15条 + Timeout) |
-| **文件操作** | File Executor (path traversal / absolute path / symlink blocking) |
-| **自动分发** | Executor Registry (auto-dispatch by action.type, fail-fast mode) |
-| **安全沙箱** | Workspace Boundary + Command Allowlist/Blocklist |
-| **预算保护** | Budget Guard (4-dim: iterations/runtime/failures/tokens, 80% warn, 100% block) |
-| **API 校验** | Zod schemas (prevents NaN→SQL, type-safe inputs) |
-| **DB 索引** | 7 new indexes (goals/tasks/missions/memory — eliminates full table scans) |
+| **Task Execution** | Command Executor (Allowlist 30 + Blocklist 15 + Timeout) |
+| **File Operations** | File Executor (path traversal / absolute path / symlink blocking) |
+| **Auto-dispatch** | Executor Registry (auto-dispatch by action.type, fail-fast mode) |
+| **Security Sandbox** | Workspace Boundary + Command Allowlist/Blocklist |
+| **Budget Protection** | Budget Guard (4-dim: iterations/runtime/failures/tokens, 80% warn, 100% block) |
+| **API Validation** | Zod schemas (NaN→SQL prevention, type-safe inputs) |
+| **DB Indexes** | 7 indexes (goals/tasks/missions/memory — eliminates full table scans) |
 
-## 工程化
+## Engineering
 
-| 能力 | 实现 |
+| Feature | Implementation |
 |:---|:---|
-| **结构化日志** | createLogger + Trace ID 全链路 + 4 级日志 |
-| **结构化错误** | ErrorCode 枚举 (8 种) + MRXError (retryable) + withErrorHandling |
-| **API 认证** | Bearer Token + 3 级权限 (read/write/admin) + 速率限制 |
-| **CI/CD** | GitHub Actions: 3 Node 版本 × (tsc + 4 suites + build) |
-| **测试数据清理** | cleanupTestData() SQL 级清理，比 rm -f 更快 |
-| **贡献指南** | CONTRIBUTING.md + 2 个 Mission 模板 |
+| **Structured Logging** | createLogger + Trace ID full-chain + 4 log levels |
+| **Structured Errors** | ErrorCode enum (8 types) + MRXError (retryable) + withErrorHandling |
+| **API Authentication** | Bearer Token + 3-tier RBAC (read/write/admin) + rate limiting |
+| **CI/CD** | GitHub Actions: 3 Node versions × (tsc + 4 suites + build) |
+| **Test Cleanup** | cleanupTestData() SQL-level cleanup, faster than rm -f |
+| **Contributing Guide** | CONTRIBUTING.md + 2 Mission templates |
 
-## 性能优化
+## Performance
 
-| 优化 | 说明 |
+| Optimization | Description |
 |:---|:---|
-| **Recall 缓存** | 30s TTL，100次Loop从100次IO降至每30s一次 |
-| **Command Set** | 白名单 Array(O(n))→Set(O(1)) 查找 |
-| **drain 事件驱动** | setTimeout轮询→await waitOne，零延迟 |
-| **save 防抖** | 100ms内多次状态变更合并为一次磁盘写 |
+| **Recall Cache** | 30s TTL, 100 loops from 100 I/O to once per 30s |
+| **Command Set** | Allowlist Array(O(n)) → Set(O(1)) lookup |
+| **drain Event-driven** | setTimeout polling → await waitOne, zero latency |
+| **save Debounce** | Multiple state changes within 100ms merged into one disk write |
 
 ## Design Documents
 
