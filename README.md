@@ -2,7 +2,7 @@
 
 > **Autonomous Agent Runtime.** Not a skill. Not a script. A long-running mission execution engine.
 >
-> 14 phases. 35 files. ~8,600 lines of code. 14/14 acceptance tests passing.
+> 15 phases. 39 files. ~10,800 lines of code. 15/15 acceptance tests passing.
 
 MRX transforms an AI agent from "one-shot prompt responder" into a **persistent autonomous executor** that plans, executes, validates, recovers, remembers, and reports — across hours or days.
 
@@ -14,10 +14,13 @@ MRX transforms an AI agent from "one-shot prompt responder" into a **persistent 
 # Install
 cd openclaw-mrx && npm install
 
-# Run the full test suite (14 tests)
+# Run the full test suite (15 tests)
 npx tsx cli/mrx-skeleton.ts test
 
-# V1 executor tests (12 tests: command + file + security + budget)
+# V2 test suite (10 tests: tool + hybrid recall + semantic)
+npx tsx test/v2-integration-test.ts
+
+# V1 executor tests
 npx tsx test/v1-executor-test.ts
 
 # Create and plan an objective
@@ -58,7 +61,7 @@ npx tsx test/p3-api-test.ts   # 12 endpoint tests included
   ┌─────▼─────┐  ┌──────▼──────┐  ┌─────────▼──────────┐
   │ Executor  │  │  Recovery   │  │  Checkpoint         │
   │ Registry  │  │  Engine V2  │  │  Manager V2         │
-  │ (V1)      │  │ (6-branch)  │  │ (SQLite rollback)   │
+  │ (V2)      │  │ (6-branch)  │  │ (SQLite rollback)   │
   └───────────┘  └─────────────┘  └────────────────────┘
         │
   ┌─────▼─────┐  ┌──────────────┐  ┌──────────────────┐
@@ -88,7 +91,9 @@ npx tsx test/p3-api-test.ts   # 12 endpoint tests included
 | **DAG, not task list** | Tasks have `depends_on` + `children`, enabling parallel execution |
 | **LLM + Rules hybrid** | LLM does creative Goal decomposition; rules handle validation, dedup, cycle detection |
 | **External verification only** | Never let the LLM judge its own success — all validation runs real commands |
-| **Execute with safety** | Command Allowlist/Blocklist, File path traversal protection, Workspace boundary |
+| **Execute with tools** | 6 built-in tools (git/npm/lint) via unified Tool interface + risk gating |
+| **Hybrid memory** | 0.3*BM25 + 0.5*Embedding + 0.2*Recency — multi-signal fusion recall |
+| **Semantic validation** | Cosine similarity via embeddings + Jaccard fallback for goal dedup |
 | **Budget everywhere** | 4-dimension guard: iterations, runtime, failures, tokens — 80% warn, 100% block |
 | **Checkpoint everything** | SQLite-based state snapshots enable true rollback (not just file copies) |
 | **Memory is a loop** | Compiler writes → QMD indexes → Recall Engine reads → Context injected |
@@ -145,7 +150,7 @@ GET    /api/v1/reports/mission/:id             Mission Report
 GET    /api/v1/reports/global                  Global Report
 ```
 
-## Test Suite (14/14 ✅)
+## Test Suite (15/15 ✅)
 
 ```bash
 npx tsx cli/mrx-skeleton.ts test
@@ -167,6 +172,16 @@ npx tsx cli/mrx-skeleton.ts test
 | 12 | Metrics Engine — statistics report | P2 |
 | 13 | Runtime API — POST/GET/PATCH/DELETE (zod validated) | P3 |
 | 14 | V1 — Executor + Security + Budget Guard | V1 |
+| 15 | V2 — Tool Executor + Hybrid Recall + Semantic | V2 |
+
+## V2 新增能力
+
+| 能力 | 实现 |
+|:---|:---|
+| **Tool Executor** | 6 内置工具 (git.status/commit, npm.test/build/install, lint) + 风险分级 |
+| **Hybrid Recall** | 0.3*BM25 + 0.5*Embedding + 0.2*Recency 混合打分 |
+| **Semantic Validator** | Cosine Similarity + Jaccard fallback + 相似度矩阵可视化 |
+| **Loop Execute** | Plan→Execute→Validate 闭环, ExecutorRegistry 3种executor自动分发 |
 
 ## V1 新增能力
 
@@ -206,8 +221,9 @@ Architecture decisions and contracts are in the workspace `design/` directory:
 ✅ P2: Supervision      (2/2 — Quality Manager, Metrics Engine)
 ✅ P3: External API     (1/1 — Runtime REST API + zod validation)
 ✅ V1: Executor         (5/5 — Executor, Command, File, Registry, Budget Guard)
+✅ V2: Intelligence      (4/4 — Tool Executor, Hybrid Recall, Semantic Validator, Loop Execute)
 ─────────────────────────────────────────────────────────
-   14/14 PHASES COMPLETE
+   15/15 PHASES COMPLETE
 ```
 
 ## License
