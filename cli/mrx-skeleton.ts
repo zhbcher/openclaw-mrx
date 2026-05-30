@@ -645,6 +645,34 @@ async function handleTests() {
     } else { console.log("   ❌ FAIL"); failed++; }
   } catch (err) { console.log("   ❌ FAIL:", (err as Error).message); failed++; }
 
+  // Test 15: V2 — Tool Executor + Hybrid Recall + Semantic Validator
+  console.log("\n📋 Test 15: V2 — Tool Executor + Hybrid Recall + Semantic");
+  try {
+    const { ToolExecutor, createDefaultTools: cdt } = await import("../core/executor/tool-executor.js");
+    const { HybridRecallEngine: HRE } = await import("../core/memory/hybrid-recall-engine.js");
+    const { SemanticGoalValidator: SGV } = await import("../core/planner/semantic-goal-validator.js");
+    
+    // Tool Executor
+    const te = new ToolExecutor(cdt());
+    const tools = te.listTools();
+    
+    // Hybrid Recall
+    const hr = new HRE(path.join(process.cwd(), "data", "memory"));
+    const { scored } = await hr.recall("JWT登录", "认证系统", { useEmbedding: false, verbose: false });
+    
+    // Semantic Validator
+    const sv = new SGV();
+    const vr = await sv.validate([
+      { id: "a", title: "实现登录", description: "登录系统", deliverable: "login", depends_on: [], estimated_complexity: "low" },
+      { id: "b", title: "实现登录功能", description: "用户登录", deliverable: "login2", depends_on: [], estimated_complexity: "low" },
+    ]);
+    
+    if (tools.length >= 6 && scored.length > 0 && vr.similarityMatrix && vr.similarityMatrix.length > 0) {
+      console.log(`   ✅ PASS: ${tools.length} 工具, Hybrid ${scored.length} 条召回, Semantic ${vr.similarityMatrix.length} 对比较`);
+      passed++;
+    } else { console.log("   ❌ FAIL"); failed++; }
+  } catch (err) { console.log("   ❌ FAIL:", (err as Error).message); failed++; }
+
   // Summary
   console.log(`\n${"═".repeat(60)}`);
   console.log(`  结果: ${passed} ✅ / ${failed} ❌`);

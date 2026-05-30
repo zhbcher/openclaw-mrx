@@ -526,10 +526,36 @@ export class LoopEngine {
   // Phase 4: EXECUTE
   // ============================================================
 
+  private executorRegistry?: import("../executor/executor-registry.js").ExecutorRegistry;
+
+  /** 注入 ExecutorRegistry（V1: 支持 Tool Executor） */
+  setExecutorRegistry(registry: import("../executor/executor-registry.js").ExecutorRegistry): void {
+    this.executorRegistry = registry;
+  }
+
   private async execute(plan: ExecutionPlan): Promise<void> {
     for (const step of plan.steps) {
       console.log(`    → 步骤 ${step.order}: ${step.description}`);
 
+      // V1: 有 ExecutorRegistry 时走统一执行层
+      if (this.executorRegistry) {
+        const action = this.stepToAction(step);
+        if (action) {
+          const result = await this.executorRegistry.dispatch({
+            description: step.description,
+            workingDir: (step.params?.cwd as string) || this.config.environment.working_dir,
+            action,
+          });
+          if (!result.success) {
+            console.log(`      ⚠️  执行失败: ${result.error?.slice(0, 200)}`);
+          } else {
+            console.log(`      ✅ ${(result.output || "done").slice(0, 100)}`);
+          }
+          continue;
+        }
+      }
+
+      // 回退到原始 adapter 方式
       if (step.tool === "shell" && step.params) {
         if (step.params.commands) {
           for (const cmd of (step.params.commands as string[])) {
@@ -548,6 +574,32 @@ export class LoopEngine {
         }
       }
     }
+  }
+
+  /** 将 ExecutionStep 转为 ExecutorAction */
+  private stepToAction(step: import("../types.js").ExecutionStep): import("../executor/executor.js").ExecutorAction | null {
+    if (step.tool === "shell" && step.params) {
+      const cmd = (step.params.command as string) || (step.params.commands as string[])?.[0];
+      if (cmd) return { type: "shell", target: cmd, timeoutMs: 120000 };
+    }
+    if (step.tool === "file_write" && step.params) {
+      return {
+        type: "file_write",
+        target: step.params.path as string || "",
+        content: step.params.content as string,
+      };
+    }
+    if (step.tool === "file_read" && step.params) {
+      return { type: "file_read", target: step.params.path as string || "" };
+    }
+    if (step.tool === "tool" && step.params) {
+      return {
+        type: "tool",
+        target: step.params.tool_name as string || "",
+        content: JSON.stringify(step.params.tool_params || {}),
+      };
+    }
+    return null;
   }
 
   // ============================================================

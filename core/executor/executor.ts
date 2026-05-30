@@ -17,7 +17,7 @@ export interface TaskInput {
 }
 
 export interface ExecutorAction {
-  type: "shell" | "file_write" | "file_read" | "file_delete";
+  type: "shell" | "file_write" | "file_read" | "file_delete" | "tool";
   /** 命令（shell）或路径（file） */
   target: string;
   /** 可选参数 */
