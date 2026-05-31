@@ -16,7 +16,8 @@ Verify installation:
 
 ```bash
 npx tsc --noEmit          # TypeScript: zero errors
-npx tsx cli/mrx-skeleton.ts test   # 15/15 pass
+npx tsx cli/mrx-skeleton.ts test   # Main suite: 15/15 pass
+npx tsx test/deep-fusion-test.ts   # ECC: 5/5 pass
 ```
 
 ## 2. Your First Mission
@@ -440,9 +441,65 @@ const events = eventBus.queryEvents({
 | `rm -f data/mrx.db` | Reset database |
 | `npx tsx test/p3-api-test.ts` | Start API server |
 
+## 8. ECC Deep Fusion
+
+MRX integrates **affaan-m/ECC** (182K+ stars) — the industry's largest open-source Agent ecosystem — to supercharge your missions with 63 expert agents, 115 coding rules, and 249 skill documents.
+
+### 8.1 What ECC Brings
+
+| Asset | Count | Purpose |
+|:---|:---:|:---|
+| Expert Agents | 63 | Role-specific prompts (security-reviewer, architect, code-reviewer…) |
+| Coding Rules | 115 | Best-practice rules across 20 languages |
+| Skill Documents | 249 | Knowledge documents for LLM context |
+| Executable Skills | ~20 | Python/Shell scripts (continuous-learning, persona-forge…) |
+
+### 8.2 How It Integrates
+
+ECC knowledge is automatically injected into MRX's execution loop at three points:
+
+**1. ANALYZE Phase** — Task keywords matched against ECC agent and rule database.
+
+**2. PLAN Phase** — ECC coding rules and expert instructions guide Planner output.
+
+**3. VALIDATE Phase** — After standard validation, ECC security and quality rules run as an extra gate.
+
+### 8.3 Using ECC Experts
+
+```typescript
+import { ECCAgentAdapter, getECCRuleLoader } from "./core/ecc/index.js";
+
+const loader = getECCRuleLoader();
+await loader.initialize();
+const adapter = new ECCAgentAdapter(loader);
+
+// Select agent by task keywords, get full System Prompt
+const agent = adapter.selectAgent(["security", "review"]);
+const context = adapter.buildAgentContext(agent);
+// → context.systemPrompt includes defense baseline + review priorities
+```
+
+### 8.4 Cross-harness Export
+
+```bash
+# Export MRX agent to Claude Code / Codex / Cursor format
+npx tsx cli/export-ecc.ts --agent security-reviewer --output ./ecc-export
+npx tsx cli/export-ecc.ts --agents-all --format claude-code --output ./claude-agents
+```
+
+### 8.5 ECC Tests
+
+ECC fusion adds 10 tests (55 total):
+
+```bash
+npx tsx test/deep-fusion-test.ts           # 5 tests: rules/agents/verify
+npx tsx test/ecc-skill-executor-test.ts    # 5 tests: discovery/execution
+```
+
 ## Next Steps
 
 1. Read the [Architecture Design](docs/mission-runtime-proposal.md)
 2. Review [Architecture Decisions](docs/adr/)
 3. Explore the [OpenAPI Specification](docs/contracts/openapi.yaml)
 4. Read the [Contributing Guide](CONTRIBUTING.md)
+5. Dive into the [ECC Fusion Guide](DEEP-FUSION-GUIDE.md)

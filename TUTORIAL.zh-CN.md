@@ -16,7 +16,8 @@ npm install
 
 ```bash
 npx tsc --noEmit                    # TypeScript 编译：零错误
-npx tsx cli/mrx-skeleton.ts test     # 15 项测试全部通过
+npx tsx cli/mrx-skeleton.ts test     # 主套件：15 项全部通过
+npx tsx test/deep-fusion-test.ts     # ECC：5 项全部通过
 ```
 
 ## 2. 第一个任务
@@ -439,9 +440,65 @@ const events = eventBus.queryEvents({
 | `rm -f data/mrx.db` | 重置数据库 |
 | `npx tsx test/p3-api-test.ts` | 启动 API 服务器 |
 
+## 8. ECC 深度融合
+
+MRX 集成了 **affaan-m/ECC**（182K+ stars）—— 业界最大的 Agent Harness 开源生态，为你的任务注入 63 个专家 Agent、115 条编码规则和 249 个技能文档。
+
+### 8.1 ECC 资产一览
+
+| 资产 | 数量 | 用途 |
+|:---|:---:|:---|
+| 专家 Agent | 63 | 角色化 prompt（安全审查、架构设计、代码审查…）|
+| 编码规则 | 115 | 20 种语言的最佳实践 |
+| 技能文档 | 249 | LLM 上下文知识（安全、TDD、验证流程…）|
+| 可执行技能 | ~20 | Python/Shell 脚本（持续学习、角色锻造…）|
+
+### 8.2 融合方式
+
+ECC 知识在 Loop Engine 的三个阶段自动注入：
+
+**1. ANALYZE 阶段** — 任务关键词匹配 ECC Agent 和规则库，注入相关指导到 LLM 上下文。
+
+**2. PLAN 阶段** — ECC 编码规则和专家角色指令引导 Planner 输出。
+
+**3. VALIDATE 阶段** — 标准验证（语法→构建→测试）通过后，追加 ECC 安全和质量规则审计。
+
+### 8.3 使用 ECC 专家
+
+```typescript
+import { ECCAgentAdapter, getECCRuleLoader } from "./core/ecc/index.js";
+
+const loader = getECCRuleLoader();
+await loader.initialize();
+const adapter = new ECCAgentAdapter(loader);
+
+// 按任务关键词选择 Agent，获取完整 System Prompt
+const agent = adapter.selectAgent(["security", "review"]);
+const context = adapter.buildAgentContext(agent);
+// → context.systemPrompt 包含防御基线和审查优先级
+```
+
+### 8.4 跨 Harness 导出
+
+```bash
+# 导出 MRX Agent 到 Claude Code / Codex / Cursor 格式
+npx tsx cli/export-ecc.ts --agent security-reviewer --output ./ecc-export
+npx tsx cli/export-ecc.ts --agents-all --format claude-code --output ./claude-agents
+```
+
+### 8.5 新增测试套件
+
+ECC 融合增加 10 项测试（总计 55 项）：
+
+```bash
+npx tsx test/deep-fusion-test.ts           # 5 项：规则/Agent/验证
+npx tsx test/ecc-skill-executor-test.ts    # 5 项：技能发现/执行
+```
+
 ## 下一步
 
 1. 阅读[架构设计文档](docs/mission-runtime-proposal.md)
 2. 查看[架构决策记录](docs/adr/)
 3. 查阅 [OpenAPI 规范](docs/contracts/openapi.yaml)
 4. 阅读[贡献指南](CONTRIBUTING.md)
+5. 深入了解 [ECC 融合指南](DEEP-FUSION-GUIDE.md)
