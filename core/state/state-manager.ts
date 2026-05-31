@@ -222,4 +222,15 @@ export class StateManager {
     return state !== null && 
       (state.status === "running" || state.status === "paused" || state.status === "failed");
   }
+
+  /**
+   * 重置状态（清空 state.yaml，用于用户选择重新开始时）
+   */
+  reset(): void {
+    if (fs.existsSync(this.statePath)) {
+      fs.unlinkSync(this.statePath);
+      console.log("  🗑️  已删除旧状态文件");
+    }
+    this.state = null;
+  }
 }

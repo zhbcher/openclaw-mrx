@@ -90,11 +90,37 @@ export class LoopEngine {
     newTraceId(`mrx_${this.config.mission.id}`);
     log.info("Mission starting", { name: this.config.mission.name, objective: this.config.objective[0] });
 
+    // === 检查是否有未完成 mission 及对应的 checkpoint ===
     if (this.state.hasUnfinishedMission()) {
-      log.info("Resuming unfinished mission");
       this.state.load();
-      await this.resume();
-      return;
+      const state = this.state.getState();
+      
+      // 查找最近的 checkpoint
+      const latestCp = this.checkpointMgr.getLatest();
+      
+      if (latestCp) {
+        console.log(`\n🔍 发现未完成 Mission 和 Checkpoint:`);
+        console.log(`   Mission: ${this.config.mission.name}`);
+        console.log(`   最后循环: #${state.current_iteration}`);
+        console.log(`   最后阶段: ${state.current_phase}`);
+        console.log(`   Checkpoint: ${latestCp.id} (${latestCp.timestamp})`);
+        console.log(`   任务进度: ${state.task_tree.filter(t => t.status === "done").length}/${state.task_tree.length}`);
+        
+        // 自动恢复（subagent 友好）: subagent 是非交互环境，直接恢复
+        console.log(`\n⚡ 自动从 Checkpoint 恢复（subagent 模式）...`);
+        if (!state.last_checkpoint_id) {
+          state.last_checkpoint_id = latestCp.id;
+          this.state.save();
+        }
+        await this.resume();
+        return;
+        
+      } else {
+        // 有未完成状态但无 checkpoint，直接 resume（旧行为）
+        log.info("Resuming unfinished mission (no checkpoint found)");
+        await this.resume();
+        return;
+      }
     }
 
     console.log(`\n🚀 Mission 启动: ${this.config.mission.name}`);
@@ -414,26 +440,24 @@ export class LoopEngine {
       // 如果 ESCALATE 或 ROLLBACK 导致停止，退出循环
       if (!this.running) break;
 
-      // === CHECKPOINT ===
-      if (this.config.checkpoint.enabled && 
-          this.config.checkpoint.strategy === "phase") {
-        this.state.setPhase("checkpoint");
-        const progress = DagPlanner.getProgress(this.state.getState().task_tree);
-        const contextSummary = [
-          `任务: ${currentTask.id} → ${currentTask.status}`,
-          `DAG: ${progress.done}/${progress.total}`,
-          `验证: ${verification.passed ? "通过" : "失败"}`,
-          `裁决: ${recovery.verdict}`,
-          `预算: ${this.supervisor.checkBudget(this.state.getState()).tokens.percent}%`,
-        ].join(" | ");
+      // === CHECKPOINT (强制开启，用于中断恢复) ===
+      this.state.setPhase("checkpoint");
+      const progress = DagPlanner.getProgress(this.state.getState().task_tree);
+      const contextSummary = [
+        `任务: ${currentTask.id} → ${currentTask.status}`,
+        `DAG: ${progress.done}/${progress.total}`,
+        `验证: ${verification.passed ? "通过" : "失败"}`,
+        `裁决: ${recovery.verdict}`,
+        `预算: ${this.supervisor.checkBudget(this.state.getState()).tokens.percent}%`,
+      ].join(" | ");
 
-        const cp = this.checkpointMgr.create(this.state.getState(), contextSummary);
-        this.state.setLastCheckpoint(cp.id);
-        this.eventBus.emit("CHECKPOINT_CREATED", {
-          checkpoint_id: cp.id,
-          iteration,
-        });
-      }
+      const cp = this.checkpointMgr.create(this.state.getState(), contextSummary);
+      this.state.setLastCheckpoint(cp.id);
+      this.eventBus.emit("CHECKPOINT_CREATED", {
+        checkpoint_id: cp.id,
+        iteration,
+      });
+      console.log(`  📸 Checkpoint 已创建: ${cp.id}`);
 
       // 每 10 次循环 flush 事件
       if (iteration % 10 === 0) {

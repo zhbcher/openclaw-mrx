@@ -6,9 +6,18 @@
  * 状态机: PENDING → READY → RUNNING → DONE/FAILED/BLOCKED
  */
 
+import * as fs from "fs";
+import * as path from "path";
 import type { TaskNode } from "../types.js";
 import type { Executor, TaskInput, TaskResult } from "../executor/executor.js";
 import type { ExecutorRegistry } from "../executor/executor-registry.js";
+
+export interface TaskSchedulerCheckpoint {
+  runId: string;
+  completedTaskIds: string[];
+  totalTasks: number;
+  timestamp: string;
+}
 
 export interface SchedulerConfig {
   /** 最大并发任务数 */
@@ -19,6 +28,13 @@ export interface SchedulerConfig {
   taskTimeoutMs: number;
   /** 失败任务最大重试次数 */
   maxRetries: number;
+  /** Checkpoint 持久化配置（可选，启用后任务可中断恢复） */
+  checkpoint?: {
+    /** Checkpoint 文件存储目录 */
+    storageDir: string;
+    /** 任务运行 ID（用于恢复匹配） */
+    runId: string;
+  };
 }
 
 export interface SchedulerResult {
@@ -46,6 +62,50 @@ export class TaskScheduler {
     this.registry = registry;
   }
 
+  // ================================================================
+  // Checkpoint 支持（中断恢复）
+  // ================================================================
+
+  private getCheckpointPath(): string | null {
+    if (!this.config.checkpoint) return null;
+    return path.join(this.config.checkpoint.storageDir, "checkpoint.json");
+  }
+
+  private loadCheckpoint(): TaskSchedulerCheckpoint | null {
+    const cpPath = this.getCheckpointPath();
+    if (!cpPath || !fs.existsSync(cpPath)) return null;
+    try {
+      const raw = fs.readFileSync(cpPath, "utf-8");
+      const cp: TaskSchedulerCheckpoint = JSON.parse(raw);
+      console.log(`  📋 Checkpoint 加载: ${cp.completedTaskIds.length} 个已完成任务 (${cp.timestamp})`);
+      return cp;
+    } catch (err) {
+      console.warn(`  ⚠️  Checkpoint 加载失败: ${err}`);
+      return null;
+    }
+  }
+
+  private saveCheckpoint(completedTaskIds: string[], totalTasks: number): void {
+    const cpPath = this.getCheckpointPath();
+    if (!cpPath || !this.config.checkpoint) return;
+    
+    // 确保目录存在
+    const dir = path.dirname(cpPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    const cp: TaskSchedulerCheckpoint = {
+      runId: this.config.checkpoint.runId,
+      completedTaskIds: [...new Set(completedTaskIds)],
+      totalTasks,
+      timestamp: new Date().toISOString(),
+    };
+    
+    fs.writeFileSync(cpPath, JSON.stringify(cp, null, 2), "utf-8");
+    console.log(`  💾 Checkpoint 已保存: ${cp.completedTaskIds.length}/${cp.totalTasks} 任务`);
+  }
+
   /**
    * 并发执行 DAG 中的所有就绪任务
    */
@@ -63,15 +123,46 @@ export class TaskScheduler {
     const taskStates = new Map(tasks.map(t => [t.id, { ...t }]));
     const results = new Map<string, TaskResult>();
 
+    // ===== Checkpoint 恢复：跳过已完成任务 =====
+    const checkpoint = this.loadCheckpoint();
+    const skipTaskIds = new Set(checkpoint?.completedTaskIds || []);
+    if (skipTaskIds.size > 0) {
+      console.log(`  ⏭️  跳过 ${skipTaskIds.size} 个已完成的 checkpoint 任务`);
+      for (const [id, state] of taskStates) {
+        if (skipTaskIds.has(id)) {
+          state.status = "done";
+          completed.push({
+            success: true,
+            output: "[从 Checkpoint 恢复] 任务已在前次运行中完成",
+            error: "",
+            durationMs: 0,
+            action: { type: "shell", target: state.description },
+          });
+          console.log(`    ↪ ${id}: ${state.description}`);
+        }
+      }
+    }
+
     // 获取就绪任务（无依赖 或 依赖已满足）
     const getReadyTasks = (): TaskNode[] => {
       return [...taskStates.values()].filter(t => {
-        if (t.status !== "pending" && t.status !== "ready" && t.status !== "retrying") return false;
+        if (t.status !== "pending" && t.status !== "ready" && t.status !== "retrying" && !skipTaskIds.has(t.id)) return false;
+        // 如果跳过集中有该依赖，视为满足
         return t.depends_on.every(depId => {
           const dep = taskStates.get(depId);
-          return dep && dep.status === "done";
+          return (dep && dep.status === "done") || skipTaskIds.has(depId);
         });
       });
+    };
+
+    // 保存 checkpoint 辅助函数
+    const checkpointSave = () => {
+      const doneIds = [...taskStates.values()]
+        .filter(t => t.status === "done")
+        .map(t => t.id);
+      // 合并已有 checkpoint 的任务 ID
+      const allDone = new Set([...doneIds, ...skipTaskIds]);
+      this.saveCheckpoint([...allDone], tasks.length);
     };
 
     // 执行单个任务
@@ -122,6 +213,9 @@ export class TaskScheduler {
           }
         }
       }
+      
+      // ===== 任务完成后写入 Checkpoint =====
+      checkpointSave();
     };
 
     // PromisePool 并发控制
