@@ -24,6 +24,8 @@ const log = createLogger("loop-engine");
 import { EventBus } from "../eventbus/event-bus.js";
 import { SupervisorAgent } from "../../agents/supervisor.js";
 import { OpenClawAdapter } from "../../adapters/openclaw.js";
+import { ECCContextBuilder } from "../ecc/ecc-context-builder.js";
+import { getECCRuleLoader } from "../ecc/rule-loader.js";
 import type {
   MissionConfig,
   MissionState,
@@ -58,6 +60,10 @@ export class LoopEngine {
   private eventBus: EventBus;
   private supervisor: SupervisorAgent;
 
+  // ECC 深度融合模块
+  private eccContextBuilder: ECCContextBuilder | null = null;
+  private eccInitialized = false;
+
   private running = false;
 
   constructor(options: LoopEngineOptions) {
@@ -80,6 +86,42 @@ export class LoopEngine {
       path.join(options.storageRoot, "memory"),
       options.llmClient
     );
+
+    // ECC 深度融合层
+    this.initECCLayer();
+  }
+
+  /**
+   * 初始化 ECC 融合层（异常安全，失败不影响核心功能）
+   */
+  private async initECCLayer(): Promise<void> {
+    try {
+      const loader = getECCRuleLoader();
+      await loader.initialize();
+      this.eccContextBuilder = new ECCContextBuilder();
+      this.eccInitialized = true;
+      console.log(`✅ ECC 深度融合层已初始化`);
+    } catch (err: any) {
+      console.warn(`⚠️  ECC 融合层初始化失败（不影响核心功能）: ${err.message}`);
+    }
+  }
+
+  /**
+   * 从任务描述中提取关键词（用于 ECC 知识检索）
+   */
+  private extractTaskKeywords(task: TaskNode): string[] {
+    const words = task.description
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !["the", "and", "for", "with", "this", "that", "from"].includes(w));
+    
+    // 检测语言关键词
+    const langKeywords = ["typescript", "javascript", "python", "go", "rust", "java", 
+      "kotlin", "swift", "cpp", "csharp", "ruby", "php", "react", "angular", "vue"];
+    const detected = langKeywords.filter(lk => words.includes(lk) || task.description.toLowerCase().includes(lk));
+    
+    return [...new Set([...detected, ...words])].slice(0, 10);
   }
 
   // ============================================================
@@ -265,14 +307,14 @@ export class LoopEngine {
       const envReport = await this.observe();
       console.log(`  👁️  OBSERVE: 分支=${envReport.git_status?.branch}, 变更=${envReport.git_status?.changedFiles.length}`);
 
-      // === ANALYZE ===
+      // === ANALYZE (ECC 增强) ===
       this.state.setPhase("analyze");
-      const analysis = this.analyze(envReport, currentTask);
+      const analysis = await this.analyzeWithECC(envReport, currentTask);
       console.log(`  🔍 ANALYZE: ${analysis.summary}`);
 
-      // === PLAN ===
+      // === PLAN (ECC 增强) ===
       this.state.setPhase("plan");
-      const plan = await this.plan(analysis, iteration, currentTask);
+      const plan = await this.planWithECC(analysis, iteration, currentTask);
       console.log(`  📋 PLAN: ${plan.steps.length} 个执行步骤`);
 
       // === 风险审查（Supervisor Auditor） ===
@@ -311,9 +353,9 @@ export class LoopEngine {
       await this.execute(plan);
       console.log(`  ⚡ EXECUTE: 完成`);
 
-      // === VALIDATE ===
+      // === VALIDATE (ECC 增强) ===
       this.state.setPhase("validate");
-      const verification = await this.validate(iteration);
+      const verification = await this.validateWithECC(iteration, currentTask);
       console.log(`  ✅ VALIDATE: ${verification.passed ? "通过" : "失败"} — ${verification.summary}`);
       this.state.addVerificationRecord(verification);
 
@@ -524,6 +566,38 @@ export class LoopEngine {
     };
   }
 
+  /**
+   * ANALYZE (ECC 增强版) — 在原有分析基础上注入 ECC 知识
+   */
+  private async analyzeWithECC(
+    report: EnvironmentReport,
+    task: TaskNode
+  ): Promise<{ summary: string; issues: string[]; eccContext?: string }> {
+    const base = this.analyze(report, task);
+
+    if (!this.eccInitialized || !this.eccContextBuilder) {
+      return base;
+    }
+
+    try {
+      const keywords = this.extractTaskKeywords(task);
+      const enriched = await this.eccContextBuilder.buildEnhancedContext(
+        "",
+        task.description,
+        keywords
+      );
+
+      if (enriched.hits.rules > 0) {
+        base.summary += ` | ECC: ${enriched.summary}`;
+        return { ...base, eccContext: enriched.text };
+      }
+    } catch (err: any) {
+      log.warn(`ECC 分析增强失败: ${err.message}`);
+    }
+
+    return base;
+  }
+
   // ============================================================
   // Phase 3: PLAN — 将 Task 描述转为可执行步骤
   // ============================================================
@@ -551,6 +625,33 @@ export class LoopEngine {
     }
 
     return { iteration, task_id: task.id, steps, expected_outcome: task.description };
+  }
+
+  /**
+   * PLAN (ECC 增强版) — 注入 ECC 知识到 LLM 计划上下文
+   */
+  private async planWithECC(
+    analysis: { summary: string; issues: string[]; eccContext?: string },
+    iteration: number,
+    task: TaskNode
+  ): Promise<ExecutionPlan> {
+    const plan = await this.plan(analysis, iteration, task);
+
+    // 如果有 ECC 上下文且有 ECC 注入的规则信息，添加到计划的第一个步骤说明中
+    if (analysis.eccContext && plan.steps.length > 0) {
+      const stepCount = this.countEccRules(analysis.eccContext);
+      if (stepCount > 0) {
+        log.info(`ECC ${stepCount} 条规则已注入计划上下文`);
+      }
+    }
+
+    return plan;
+  }
+
+  /** 统计 ECC 上下文中的规则数 */
+  private countEccRules(context: string): number {
+    const matches = context.match(/\([a-z]+\/[a-z-]+\)/g);
+    return matches ? matches.length : 0;
   }
 
   /** 将 Task 描述转为 ExecutionStep[] */
@@ -683,6 +784,59 @@ export class LoopEngine {
     }
 
     return this.validator.runAll(commands, this.config.environment.working_dir, iteration, taskId);
+  }
+
+  /**
+   * VALIDATE (ECC 增强版) — 在标准验证链后追加 ECC 规则审计
+   */
+  private async validateWithECC(iteration: number, task: TaskNode) {
+    const baseResult = await this.validate(iteration);
+
+    if (!this.eccInitialized) {
+      return baseResult;
+    }
+
+    try {
+      // 检测任务中的编程语言
+      const keywords = this.extractTaskKeywords(task);
+      const langHints = ["typescript", "python", "go", "rust", "java", "kotlin", "swift", "cpp", "ruby", "php"];
+      const detectedLang = langHints.find(l => keywords.includes(l) || task.description.toLowerCase().includes(l)) || "typescript";
+
+      // 引入 ECC Verifier 做规则检查
+      const { ECCVerifier } = await import("../ecc/ecc-verifier.js");
+      const { getECCRuleLoader } = await import("../ecc/rule-loader.js");
+
+      const loader = getECCRuleLoader();
+      const verifier = new ECCVerifier(loader);
+
+      // 对当前迭代产生的代码输出做 ECC 规则检查
+      const eccResult = await verifier.verify(
+        task.description,
+        detectedLang,
+        task.description.toLowerCase().includes("security") ? "security" : "review"
+      );
+
+      if (!eccResult.passed) {
+        // 追加 ECC 违规记录到验证结果
+        baseResult.checks.push({
+          command: `ECC ${detectedLang} 规则审计`,
+          passed: false,
+          output: eccResult.violations.join("; "),
+          error: `严重程度: ${eccResult.severity}`,
+          duration_ms: 0,
+        });
+        baseResult.passed = false;
+        baseResult.summary += ` | ECC: ${eccResult.violations.length} 项违规`;
+      }
+
+      if (eccResult.warnings.length > 0) {
+        baseResult.summary += ` | ECC 警告: ${eccResult.warnings.length}`;
+      }
+    } catch (err: any) {
+      log.warn(`ECC 验证增强失败: ${err.message}`);
+    }
+
+    return baseResult;
   }
 
   // ============================================================

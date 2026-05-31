@@ -3,6 +3,7 @@
  * 
  * V1 问题：只跑 npm test / npm build，测试通过 ≠ 目标达成。
  * V2：分层验证，每层有明确的通过/失败标准。
+ * ECC 融合：ECC 规则审计在 loop-engine.ts 的 validateWithECC() 中执行。
  * 
  * 结构：
  *   SyntaxVerifier    → 语法无错误
@@ -255,6 +256,11 @@ export class VerifierChain {
     this.verifiers.push(verifier);
     return this;
   }
+
+  /**
+   * 在链尾追加 ECC 规则审计
+   * 异步导入 ECCVerifier，确保 ECC 模块不存在时不报错
+   */
 
   /**
    * 按顺序执行所有验证器，遇到失败立即停止

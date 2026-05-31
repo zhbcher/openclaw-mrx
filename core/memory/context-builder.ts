@@ -2,9 +2,12 @@
  * Context Builder — 将 Memory Recall 结果构建为可注入的上下文
  * 
  * 输出格式：结构化 Markdown 文本，注入到执行 Agent 的 system prompt 中。
+ * 
+ * ECC 增强：在 Memory 上下文尾部追加 ECC 规则知识（如果已注册 ECCContextBuilder）。
  */
 
 import type { MemoryEntry } from "./memory-compiler.js";
+import type { ECCContextBuilder } from "../ecc/ecc-context-builder.js";
 
 export interface RecallResult {
   query: string;
@@ -33,10 +36,61 @@ export interface BuiltContext {
 }
 
 export class ContextBuilder {
+  private eccBuilder: ECCContextBuilder | null = null;
+
   /**
-   * 构建上下文文本
+   * 注册 ECC 上下文构建器（可选），使 Memory Recall 结果能自动补充 ECC 规则知识
+   */
+  setECCBuilder(builder: ECCContextBuilder | null): void {
+    this.eccBuilder = builder;
+  }
+
+  /**
+   * 构建上下文文本（同步版，向后兼容）
+   * 不依赖 ECC 模块，等同于原始行为
    */
   build(result: RecallResult, maxEntries: number = 5): BuiltContext {
+    return this.buildBase(result, maxEntries);
+  }
+
+  /**
+   * 构建上下文文本（ECC 增强版）
+   * 当有 ECCContextBuilder 注册且查询命中 Memory 条目时，自动补充 ECC 规则知识
+   */
+  async buildWithECC(result: RecallResult, maxEntries: number = 5): Promise<BuiltContext> {
+    const base = this.buildBase(result, maxEntries);
+    
+    // ECC 增强：如果 Memory 有命中且 ECC 模块可用，追加 ECC 规则知识
+    if (this.eccBuilder && result.entries.length > 0) {
+      try {
+        const keywords = result.keywords.length > 0 ? result.keywords : this.extractKeywords(result.query);
+        const enriched = await this.eccBuilder.buildEnhancedContext(
+          base.text,
+          result.query,
+          keywords
+        );
+        
+        if (enriched.hits.rules > 0) {
+          return {
+            text: base.text + "\n\n" + enriched.text,
+            summary: base.summary + " | ECC: " + enriched.summary,
+            hits: {
+              ...base.hits,
+            },
+          };
+        }
+      } catch (err) {
+        // ECC 增强失败不影响主流程
+      }
+    }
+    
+    return base;
+  }
+
+  /**
+   * 原始构建逻辑（同步，不依赖 ECC）
+   */
+  private buildBase(result: RecallResult, maxEntries: number = 5): BuiltContext {
     const entries = result.entries.slice(0, maxEntries);
     
     if (entries.length === 0) {
@@ -125,7 +179,7 @@ export class ContextBuilder {
   }
 
   /**
-   * 构建紧凑版上下文（用于预算紧张的场景）
+   * 构建紧凑版上下文 (同步，不依赖 ECC)
    */
   buildCompact(result: RecallResult, maxEntries: number = 3): string {
     const entries = result.entries.slice(0, maxEntries);
@@ -139,5 +193,22 @@ export class ContextBuilder {
       lines.push(`${typeLabel} ${item.entry.title}: ${item.entry.content.slice(0, 120)}`);
     }
     return lines.join("\n");
+  }
+
+  /**
+   * 从查询文本中提取关键词
+   */
+  private extractKeywords(text: string): string[] {
+    const words = text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !["the", "and", "for", "with", "this", "that", "from"].includes(w));
+    
+    const langKeywords = ["typescript", "javascript", "python", "go", "rust", "java",
+      "kotlin", "swift", "cpp", "csharp", "ruby", "php", "react", "angular", "vue"];
+    const detected = langKeywords.filter(lk => words.includes(lk) || text.toLowerCase().includes(lk));
+    
+    return [...new Set([...detected, ...words])].slice(0, 10);
   }
 }
